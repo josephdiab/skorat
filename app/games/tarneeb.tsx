@@ -13,67 +13,89 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-import { GameStorage, Player, RoundHistory } from "../../services/game_storage";
+import { GameState, GameStorage, Player, RoundHistory } from "../../services/game_storage";
+
+// --- Component ---
 
 export default function TarneebScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-
-  // --- Initialization ---
-  
-  const initializeTeams = (): Player[] => {
-    let teamAName = "Team A";
-    let teamBName = "Team B";
-
-    if (typeof params.playerNames === 'string') {
-      try {
-        const names = JSON.parse(params.playerNames);
-        // Assuming standard order: P1, P2, P3, P4
-        // Team A: P1 & P2 (First two inputs)
-        // Team B: P3 & P4 (Last two inputs)
-        if (names.length === 4) {
-          teamAName = `${names[0]} & ${names[1]}`;
-          teamBName = `${names[2]} & ${names[3]}`;
-        }
-      } catch (e) { console.log(e); }
-    }
-
-    return [
-      { id: 'A', name: teamAName, totalScore: 0, isDanger: false, isLeader: false },
-      { id: 'B', name: teamBName, totalScore: 0, isDanger: false, isLeader: false },
-    ];
-  };
-
-  // Helper to keep track of original names for UI display if needed
-  const [teamNames, setTeamNames] = useState(() => {
-    if (typeof params.playerNames === 'string') {
-      try {
-        const names = JSON.parse(params.playerNames);
-        return {
-          A: `${names[0]} & ${names[1]}`,
-          B: `${names[2]} & ${names[3]}`
-        };
-      } catch (e) { return { A: "Team A", B: "Team B" }; }
-    }
-    return { A: "Team A", B: "Team B" };
-  });
+  const instanceId = (params.instanceId as string) || (params.id as string);
 
   // --- State ---
-  const [teams, setTeams] = useState<Player[]>(initializeTeams);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Default Empty State
+  const [teams, setTeams] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundNum, setRoundNum] = useState(1);
   const [isExpanded, setIsExpanded] = useState(false);
   
   // Config
-  const [gameName] = useState((params.gameName as string) || "TARNEEB");
-  const [scoreLimit] = useState(params.scoreLimit ? Number(params.scoreLimit) : 31);
-  const [bestOf] = useState(params.bestOf ? Number(params.bestOf) : 3); 
-
+  const [gameName, setGameName] = useState("TARNEEB");
+  const [scoreLimit, setScoreLimit] = useState(31);
+  const [bestOf, setBestOf] = useState(3);
+  
   // Tarneeb Specific State
   const [phase, setPhase] = useState<'bidding' | 'scoring'>('bidding');
   const [callingTeam, setCallingTeam] = useState<'A' | 'B' | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(7);
-  const [tricksTaken, setTricksTaken] = useState<number>(7); 
+  const [tricksTaken, setTricksTaken] = useState<number>(7);
+
+  // Helper for Team Names (for UI display)
+  const [teamNames, setTeamNames] = useState({ A: "Team A", B: "Team B" });
+
+  // --- LOAD DATA ---
+  useEffect(() => {
+    const loadGameData = async () => {
+      // 1. Resume existing game
+      if (instanceId) {
+        const savedGame = await GameStorage.get(instanceId);
+        if (savedGame) {
+          setTeams(savedGame.players);
+          setHistory(savedGame.history);
+          setRoundNum(savedGame.roundNum);
+          setGameName(savedGame.title);
+          setScoreLimit(savedGame.scoreLimit || 31);
+          setBestOf(savedGame.bestOf || 3);
+          // Restore team names from saved player objects
+          setTeamNames({
+            A: savedGame.players[0].name,
+            B: savedGame.players[1].name
+          });
+          setIsLoaded(true);
+          return;
+        }
+      }
+
+      // 2. Initialize New Game
+      if (typeof params.playerNames === 'string') {
+        try {
+          const names = JSON.parse(params.playerNames);
+          let teamAName = "Team A";
+          let teamBName = "Team B";
+          
+          if (names.length === 4) {
+            teamAName = `${names[0]} & ${names[1]}`;
+            teamBName = `${names[2]} & ${names[3]}`;
+          }
+          
+          setTeamNames({ A: teamAName, B: teamBName });
+          
+          setTeams([
+            { id: 'A', name: teamAName, totalScore: 0, isDanger: false, isLeader: false },
+            { id: 'B', name: teamBName, totalScore: 0, isDanger: false, isLeader: false },
+          ]);
+          
+          setGameName((params.gameName as string) || "TARNEEB");
+          setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 31);
+          setBestOf(params.bestOf ? Number(params.bestOf) : 3);
+          setIsLoaded(true);
+        } catch (e) { console.log(e); }
+      }
+    };
+    loadGameData();
+  }, [instanceId]);
 
   // --- Logic ---
 
@@ -87,11 +109,10 @@ export default function TarneebScreen() {
     let pointsA = 0;
     let pointsB = 0;
 
-    // Points for the calling team
+    // Caller: +Tricks if success, -Bid if fail
     const callerPoints = success ? tricksTaken : -bidAmount;
     
-    // Points for the defending team
-    // Rule: Defenders only score if caller fails. If caller succeeds, defenders get 0.
+    // Defender: 0 if caller success, 13-Tricks if caller fail
     const defenderPoints = success ? 0 : (13 - tricksTaken);
 
     if (callingTeam === 'A') {
@@ -115,20 +136,15 @@ export default function TarneebScreen() {
 
     const roundDetails: Record<string, any> = {};
     
-    // Update Teams
     const updatedTeams = teams.map(t => {
       const pointsChange = t.id === 'A' ? result.pointsA : result.pointsB;
-      
-      // History data
-      roundDetails[t.id] = {
-        score: pointsChange,
-      };
-
+      roundDetails[t.id] = { score: pointsChange };
       const newTotal = t.totalScore + pointsChange;
+      
       return { 
         ...t, 
         totalScore: newTotal,
-        // Only Danger (Red) if score is negative
+        // Danger: Red if score is negative
         isDanger: newTotal < 0 
       };
     });
@@ -142,7 +158,7 @@ export default function TarneebScreen() {
       Alert.alert("Game Over!", `${winner.name} Wins!`);
     } 
 
-    // Reset for next round
+    // Reset
     setRoundNum(prev => prev + 1);
     setCallingTeam(null);
     setBidAmount(7);
@@ -152,13 +168,18 @@ export default function TarneebScreen() {
 
   // --- Persistence ---
   useEffect(() => {
-    const gameState: any = {
-      id: "current-match",
+    if (!isLoaded) return;
+
+    const gameState: GameState = {
+      id: instanceId,
+      instanceId,
+      gameType: 'tarneeb',
+      status: 'active',
       mode: 'teams',
       title: gameName, 
       roundLabel: `Round ${roundNum}`, 
-      lastPlayed: "Active Now",
-      players: teams, // Saving teams as players for the card to render 2 columns
+      lastPlayed: new Date().toISOString(),
+      players: teams, 
       history,
       roundNum,
       scoreLimit,
@@ -166,7 +187,9 @@ export default function TarneebScreen() {
       isTeamScoreboard: true // TARNEEB IS A TEAM SCOREBOARD
     };
     GameStorage.save(gameState);
-  }, [teams, history, roundNum, bestOf]);
+  }, [teams, history, roundNum, isLoaded]);
+
+  if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
@@ -178,7 +201,6 @@ export default function TarneebScreen() {
         onBack={() => router.dismissAll()} 
       />
       
-      {/* Reusing ScoreboardHistory - passing 'teams' as 'players' creates 2 columns */}
       <ScoreboardHistory 
         players={teams}
         history={history}
@@ -206,8 +228,7 @@ export default function TarneebScreen() {
       <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: Spacing.l, paddingBottom: 120, paddingTop: Spacing.xl }}>
           
-          {/* PHASE 1: BIDDING */}
-          {phase === 'bidding' && (
+          {phase === 'bidding' ? (
             <BiddingPhase 
               callingTeam={callingTeam} 
               setCallingTeam={setCallingTeam} 
@@ -216,10 +237,7 @@ export default function TarneebScreen() {
               setTricksTaken={setTricksTaken}
               teamNames={teamNames}
             />
-          )}
-
-          {/* PHASE 2: SCORING */}
-          {phase === 'scoring' && (
+          ) : (
             <ScoringPhase 
               callingTeam={callingTeam} 
               tricksTaken={tricksTaken} 
@@ -257,7 +275,7 @@ export default function TarneebScreen() {
   );
 }
 
-// --- Sub-Components (Local to File) ---
+// --- Sub-Components ---
 
 const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, setTricksTaken, teamNames }: any) => (
   <>
@@ -285,11 +303,13 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
           style={[styles.bidOption, bidAmount === num && styles.bidOptionActive]}
           onPress={() => {
             setBidAmount(num);
-            setTricksTaken(num); // Auto-set tricks
+            setTricksTaken(num); 
           }}
           activeOpacity={0.8}
         >
-          <Text style={[styles.bidOptionText, bidAmount === num && { color: '#000' }]}>{num}</Text>
+          <Text style={[styles.bidOptionText, bidAmount === num && { color: '#000' }]}>
+            {num}
+          </Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -315,7 +335,10 @@ const ScoringPhase = ({ callingTeam, tricksTaken, setTricksTaken, preview }: any
        <View style={[styles.previewCard, preview.success ? styles.previewSuccess : styles.previewFail]}>
           <View style={GlobalStyles.rowBetween}>
              <View style={GlobalStyles.row}>
-                {preview.success ? <Check size={24} color={Colors.primary} /> : <X size={24} color={Colors.danger} />}
+                {preview.success 
+                  ? <Check size={24} color={Colors.primary} /> 
+                  : <X size={24} color={Colors.danger} />
+                }
                 <Text style={styles.previewTitle}>{preview.success ? "Successful Call" : "Failed Call"}</Text>
              </View>
           </View>

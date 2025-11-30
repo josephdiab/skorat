@@ -1,18 +1,12 @@
-import { Feather } from '@expo/vector-icons'; // Import Feather icons
+import { Trash2 } from "lucide-react-native";
 import React from "react";
 import { Alert, Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { Colors, GlobalStyles, Spacing } from "../constants/theme";
 import { GameState } from "../services/game_storage";
 
-// Extend the base GameState to include optional properties that are saved
-type ExtendedGameState = GameState & {
-  bestOf?: number;
-  scoreLimit?: number;
-};
-
 type MatchCardProps = {
-  match: ExtendedGameState;
+  match: GameState;
   onPress: () => void;
   onDelete: () => void;
 };
@@ -32,15 +26,8 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
       "Delete Match",
       `Are you sure you want to delete "${match.title}"?`,
       [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: onDelete,
-        },
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: onDelete },
       ]
     );
   };
@@ -50,10 +37,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
     progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>
   ) => {
-    // Add a simple scale animation on drag
     const scale = dragX.interpolate({
       inputRange: [-80, 0],
-      outputRange: [1, 0.8], // Slight scaling effect
+      outputRange: [1, 0.8],
       extrapolate: 'clamp',
     });
 
@@ -64,8 +50,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
         activeOpacity={0.7}
       >
         <Animated.View style={[styles.deleteButtonContent, { transform: [{ scale }] }]}>
-          {/* Replaced Text with Feather Icon and changed color to red */}
-          <Feather name="trash-2" size={28} color={Colors.danger} />
+          <Trash2 size={28} color={Colors.danger} />
         </Animated.View>
       </TouchableOpacity>
     );
@@ -103,12 +88,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
             /* Team Mode View */
             <View>
               {(() => {
-                // Case 1: Aggregated Team View (2 "Players" representing Teams, e.g. Tarneeb)
+                // Case 1: 2-Team Game (Tarneeb)
                 if (match.players.length === 2) {
                    const teamA = match.players[0];
                    const teamB = match.players[1];
                    
-                   // Try to split names if they were combined (e.g. "P1 & P2")
+                   // Try to split names if they were combined
                    const namesA = teamA.name.includes("&") ? teamA.name.split(" & ") : [teamA.name];
                    const namesB = teamB.name.includes("&") ? teamB.name.split(" & ") : [teamB.name];
                    
@@ -147,65 +132,64 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
                    );
                 }
 
-                // Case 2: Individual Team View (4 Players split into teams, e.g. 400, Leekha)
+                // Case 2: 4-Player Team Game (400, Leekha Teams)
                 if (match.players.length >= 4) {
-                  const pA1 = match.players[0]; // Team A
-                  const pB1 = match.players[1]; // Team B
-                  const pA2 = match.players[2]; // Team A
-                  const pB2 = match.players[3]; // Team B
+                  const pA1 = match.players[0];
+                  const pB1 = match.players[1];
+                  const pA2 = match.players[2];
+                  const pB2 = match.players[3];
 
                   return (
-                    <View>
-                      {/* 1. Team Labels Row */}
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <>
+                      {/* Team Labels */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                          <Text style={styles.teamLabel}>Team A</Text>
                          <Text style={styles.teamLabel}>Team B</Text>
                       </View>
 
-                      {/* 2. Players & Scores Row - Centered Alignment */}
+                      {/* Players & Scores Row - Centered Alignment */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                         
-                        {/* Team A Column (Left) */}
+                        {/* Team A Column (Left) - Name | ScoreBox */}
                         <View style={{ flex: 1, marginRight: 4 }}>
-                            <View style={styles.playerRow}>
-                              <Text style={styles.playerNameLeft} numberOfLines={1}>{pA1.name}</Text>
-                              <View style={styles.scoreBox}>
-                                <Text style={[styles.playerScoreSmall, getScoreStyle(pA1)]}>{pA1.totalScore}</Text>
-                              </View>
-                            </View>
+                           <View style={styles.playerRow}>
+                             <Text style={styles.playerNameLeft} numberOfLines={1}>{pA1.name}</Text>
+                             <View style={styles.scoreBox}>
+                               <Text style={[styles.playerScoreSmall, getScoreStyle(pA1)]}>{pA1.totalScore}</Text>
+                             </View>
+                           </View>
 
-                            <View style={styles.playerRow}>
-                              <Text style={styles.playerNameLeft} numberOfLines={1}>{pA2.name}</Text>
-                              <View style={styles.scoreBox}>
-                                 <Text style={[styles.playerScoreSmall, getScoreStyle(pA2)]}>{pA2.totalScore}</Text>
-                              </View>
-                            </View>
+                           <View style={styles.playerRow}>
+                             <Text style={styles.playerNameLeft} numberOfLines={1}>{pA2.name}</Text>
+                             <View style={styles.scoreBox}>
+                                <Text style={[styles.playerScoreSmall, getScoreStyle(pA2)]}>{pA2.totalScore}</Text>
+                             </View>
+                           </View>
                         </View>
                         
-                        {/* VS Divider (Center) */}
+                        {/* VS Divider */}
                         <Text style={[styles.rowText, { fontSize: 12, color: Colors.textMuted, marginHorizontal: 4 }]}>
-                            vs 
+                           vs 
                         </Text>
                         
-                        {/* Team B Column (Right) */}
+                        {/* Team B Column (Right) - ScoreBox | Name */}
                         <View style={{ flex: 1, marginLeft: 4, alignItems: 'flex-end' }}>
-                            <View style={styles.playerRow}>
-                              <View style={styles.scoreBox}>
-                                 <Text style={[styles.playerScoreSmall, getScoreStyle(pB1)]}>{pB1.totalScore}</Text>
-                              </View>
-                              <Text style={styles.playerNameRight} numberOfLines={1}>{pB1.name}</Text>
-                            </View>
+                           <View style={styles.playerRow}>
+                             <View style={styles.scoreBox}>
+                                <Text style={[styles.playerScoreSmall, getScoreStyle(pB1)]}>{pB1.totalScore}</Text>
+                             </View>
+                             <Text style={styles.playerNameRight} numberOfLines={1}>{pB1.name}</Text>
+                           </View>
 
-                            <View style={styles.playerRow}>
-                              <View style={styles.scoreBox}>
-                                 <Text style={[styles.playerScoreSmall, getScoreStyle(pB2)]}>{pB2.totalScore}</Text>
-                              </View>
-                              <Text style={styles.playerNameRight} numberOfLines={1}>{pB2.name}</Text>
-                            </View>
+                           <View style={styles.playerRow}>
+                             <View style={styles.scoreBox}>
+                                <Text style={[styles.playerScoreSmall, getScoreStyle(pB2)]}>{pB2.totalScore}</Text>
+                             </View>
+                             <Text style={styles.playerNameRight} numberOfLines={1}>{pB2.name}</Text>
+                           </View>
                         </View>
-
                       </View>
-                    </View>
+                    </>
                   );
                 }
                 
@@ -238,44 +222,12 @@ const styles = StyleSheet.create({
     color: Colors.danger,
     fontWeight: "bold",
   },
-  // Generic Layout Styles
-  teamRowContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  nameColLeft: {
-    flex: 1,
-    alignItems: 'flex-start',
-  },
-  nameColRight: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  scoreCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 100,
-    marginTop: 18, 
-  },
-  vsText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    marginHorizontal: 8,
-    fontWeight: '600',
-  },
-  
-  // Labels
   teamLabel: {
     color: Colors.textSecondary,
     fontSize: 10,
     textTransform: 'uppercase',
-    marginBottom: 4,
     fontWeight: 'bold',
   },
-
-  // 4-Player Row Styles
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -302,9 +254,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 2,
   },
-  // Fixed width box for vertical alignment of scores
+  // Fixed width box ensures scores stack perfectly vertically
   scoreBox: {
-    minWidth: 35,
+    width: 40, 
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -325,17 +277,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  nameColLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  nameColRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  scoreCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 100,
+  },
+  vsText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginHorizontal: 8,
+    fontWeight: '600',
+  },
   // Swipe Actions
   deleteButtonContainer: {
     justifyContent: 'center',
     alignItems: 'center',
     width: 80,
     height: '100%',
-    // Removed backgroundColor and border radius for a simpler look
   },
   deleteButtonContent: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // deleteText style removed as it is no longer used
 });

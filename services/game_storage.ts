@@ -1,5 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Types shared between files
+// --- Types ---
+
 export type Player = {
   id: string;
   name: string;
@@ -21,12 +23,14 @@ export type RoundHistory = {
 };
 
 export type GameState = {
-  instanceId: string; // Unique ID for this specific match (e.g. timestamp)
-  gameType: 'leekha' | 'tarneeb' | '400'; // To know which screen to route to
+  id: string; // Unique ID (instanceId)
+  instanceId: string; // Redundant but kept for compatibility with your current params
+  gameType: 'leekha' | 'tarneeb' | '400';
   mode: 'solo' | 'teams';
   title: string;
   roundLabel: string;
-  lastPlayed: string;
+  lastPlayed: string; // ISO Date string
+  status: 'active' | 'completed'; // New field to filter tabs
   players: Player[];
   history: RoundHistory[];
   roundNum: number;
@@ -35,30 +39,80 @@ export type GameState = {
   isTeamScoreboard?: boolean; 
 };
 
-// In-Memory Store (Note: Resets on app reload. Use AsyncStorage for permanent persistence)
-let activeGames: GameState[] = [];
+const STORAGE_KEY = '@skorat_games_v1';
 
 export const GameStorage = {
-  save: (game: GameState) => {
-    const index = activeGames.findIndex(g => g.instanceId === game.instanceId);
-    if (index >= 0) {
-      // Update existing game
-      activeGames[index] = { ...game, lastPlayed: "Just now" };
-    } else {
-      // Add new game
-      activeGames.unshift({ ...game, lastPlayed: "Just now" }); // Add to top
+  // Save or Update a game
+  save: async (game: GameState) => {
+    try {
+      const existingData = await AsyncStorage.getItem(STORAGE_KEY);
+      let games: GameState[] = existingData ? JSON.parse(existingData) : [];
+      
+      const index = games.findIndex(g => g.id === game.id);
+      
+      const updatedGame = { 
+        ...game, 
+        lastPlayed: new Date().toISOString() // Update timestamp
+      };
+
+      if (index >= 0) {
+        games[index] = updatedGame;
+      } else {
+        games.unshift(updatedGame);
+      }
+
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+    } catch (e) {
+      console.error("Failed to save game", e);
     }
   },
   
-  get: (instanceId: string): GameState | undefined => {
-    return activeGames.find(g => g.instanceId === instanceId);
+  // Get a specific game by ID
+  get: async (id: string): Promise<GameState | undefined> => {
+    try {
+      const existingData = await AsyncStorage.getItem(STORAGE_KEY);
+      if (!existingData) return undefined;
+      
+      const games: GameState[] = JSON.parse(existingData);
+      return games.find(g => g.id === id);
+    } catch (e) {
+      console.error("Failed to get game", e);
+      return undefined;
+    }
   },
 
-  getAll: (): GameState[] => {
-    return activeGames;
+  // Get all games
+  getAll: async (): Promise<GameState[]> => {
+    try {
+      const existingData = await AsyncStorage.getItem(STORAGE_KEY);
+      return existingData ? JSON.parse(existingData) : [];
+    } catch (e) {
+      console.error("Failed to get all games", e);
+      return [];
+    }
   },
   
-  clear: () => {
-    activeGames = [];
+  // Remove a game
+  remove: async (id: string) => {
+    try {
+      const existingData = await AsyncStorage.getItem(STORAGE_KEY);
+      if (!existingData) return;
+      
+      const games: GameState[] = JSON.parse(existingData);
+      const filteredGames = games.filter(g => g.id !== id);
+      
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filteredGames));
+    } catch (e) {
+      console.error("Failed to remove game", e);
+    }
+  },
+
+  // Clear all data (Debug use)
+  clear: async () => {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.error("Failed to clear storage", e);
+    }
   }
 };

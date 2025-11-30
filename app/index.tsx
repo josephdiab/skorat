@@ -20,29 +20,64 @@ type TabKey = "active" | "history";
 export default function Index() {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("active");
-  const [activeGame, setActiveGame] = useState<GameState | null>(null);
+  const [games, setGames] = useState<GameState[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Refresh active game whenever screen comes into focus
+  // Load games from storage
+  const loadGames = async () => {
+    setIsLoading(true);
+    const allGames = await GameStorage.getAll();
+    // Sort by newest first
+    const sorted = allGames.sort((a, b) => 
+      new Date(b.lastPlayed).getTime() - new Date(a.lastPlayed).getTime()
+    );
+    setGames(sorted);
+    setIsLoading(false);
+  };
+
+  // Refresh active games list whenever screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      const current = GameStorage.get();
-      setActiveGame(current);
+      loadGames();
     }, [])
   );
 
-  const handleResumeGame = () => {
-    if (activeGame) {
-      router.push({ pathname: "/games/scoreboard", params: { resume: "true" } });
-    }
+  const handleResumeGame = (game: GameState) => {
+    // Route based on the saved game type
+    let routePath = "/games/scoreboard"; // Fallback
+    if (game.gameType === 'leekha') routePath = "/games/leekha";
+    if (game.gameType === '400') routePath = "/games/400";
+    if (game.gameType === 'tarneeb') routePath = "/games/tarneeb";
+
+    router.push({ 
+      pathname: routePath as any, 
+      params: { 
+        instanceId: game.id, // Pass unique ID to load specific game data
+        resume: "true" 
+      } 
+    });
   };
 
-  // Mock History Data
-  const historyData: GameState[] = []; 
+  const handleDeleteGame = (gameId: string) => {
+    // The confirmation alert is handled inside MatchCard, 
+    // but we can also double-check or just perform the delete here.
+    // Since MatchCard has the UI for the alert, we just provide the action.
+    
+    const performDelete = async () => {
+      await GameStorage.remove(gameId);
+      loadGames(); // Refresh list after deletion
+    };
 
-  // Combine Active Game into a list for FlatList
-  const activeData = activeGame ? [activeGame] : [];
-  
-  const displayData = tab === "active" ? activeData : historyData;
+    performDelete();
+  };
+
+  // Filter games based on status (active vs completed)
+  // For V1, we assume everything is active until we implement a "Finish Game" feature
+  // You can manually filter based on logic if you add a 'status' field later
+  const activeGames = games.filter(g => g.status !== 'completed');
+  const historyGames = games.filter(g => g.status === 'completed');
+
+  const displayData = tab === "active" ? activeGames : historyGames;
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
@@ -56,7 +91,7 @@ export default function Index() {
       {/* Tab Bar */}
       <TabBar
         activeTab={tab}
-        activeCount={activeData.length}
+        activeCount={activeGames.length}
         onChangeTab={setTab}
       />
 
@@ -66,12 +101,13 @@ export default function Index() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
-          <EmptyState tab={tab} />
+          !isLoading ? <EmptyState tab={tab} /> : null
         }
         renderItem={({ item }) => (
           <MatchCard
             match={item}
-            onPress={handleResumeGame}
+            onPress={() => handleResumeGame(item)}
+            onDelete={() => handleDeleteGame(item.id)}
           />
         )}
       />
