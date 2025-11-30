@@ -1,53 +1,119 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
+import { StyleSheet } from "react-native";
 
-import { Platform } from 'react-native';
-
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
-
+// 1. Design Tokens
 export const Colors = {
-  light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
-  },
-  dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
-  },
+  background: "#111111",
+  primary: "#0f9d58", // Green
+  surface: "#1e1e1e", // Card background
+  surfaceLight: "#252525", // Lighter inputs/buttons
+  surfaceInner: "#161616", // Inner content areas
+  border: "#333333",
+  text: "#ffffff",
+  textSecondary: "#888888",
+  textMuted: "#555555",
+  danger: "#ff5252",
 };
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
+export const Spacing = {
+  xs: 4,
+  s: 8,
+  m: 12,
+  l: 16,
+  xl: 24,
+  xxl: 32,
+};
+
+// 2. Shared Global Styles
+export const GlobalStyles = StyleSheet.create({
+  // Layouts
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
   },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+  rowBetween: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  
+  // Headers
+  headerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.l,
+    paddingVertical: Spacing.m,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "800",
+    color: Colors.text,
+    letterSpacing: 0.5,
+  },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surfaceLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Cards
+  card: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: Spacing.l,
+    marginBottom: Spacing.m,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  cardTitle: {
+    color: Colors.text,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  
+  // Buttons
+  primaryButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 24,
+    paddingVertical: Spacing.l,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  primaryButtonText: {
+    color: Colors.text,
+    fontWeight: "700",
+    fontSize: 16,
+    letterSpacing: 0.5,
+  },
+
+  // Inputs
+  input: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.m,
+    paddingVertical: 10,
+    color: Colors.text,
+    fontSize: 14,
+  },
+
+  // Typography helpers
+  textSmall: {
+    fontSize: 12,
+    color: Colors.textSecondary,
   },
 });
