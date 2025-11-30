@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-import { GameStorage, Player, RoundHistory } from "../../services/game_storage";
+import { GameState, GameStorage, Player, RoundHistory } from "../../services/game_storage";
 
 // --- 400 Game Logic Helpers ---
 
@@ -34,45 +34,74 @@ const getMinBidForPlayer = (score: number) => {
 export default function FourHundredScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const instanceId = (params.instanceId as string) || (params.id as string);
   
-  // --- Initialization ---
-  const initializePlayers = (): Player[] => {
-    if (typeof params.playerNames === 'string') {
-      try {
-        let names = JSON.parse(params.playerNames);
-        // Reorder from NewGame [A1, A2, B1, B2] to Alternating [A1, B1, A2, B2]
-        if (params.mode === 'teams' && names.length === 4) {
-          names = [names[0], names[2], names[1], names[3]];
-        }
-        return names.map((name: string, index: number) => ({
-          id: (index + 1).toString(),
-          name: name,
-          totalScore: 0,
-          isDanger: false
-        }));
-      } catch (e) { console.log(e); }
-    }
-    return [];
-  };
-
   // --- State ---
-  const [players, setPlayers] = useState<Player[]>(initializePlayers);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundNum, setRoundNum] = useState(1);
   const [isExpanded, setIsExpanded] = useState(false);
   
   // Game Config
-  const [gameName] = useState((params.gameName as string) || "400");
-  const [bestOf] = useState(params.bestOf ? Number(params.bestOf) : 41); // Default to 41 for 400
+  const [mode, setMode] = useState<'solo' | 'teams'>('teams');
+  const [gameName, setGameName] = useState("400");
+  const [bestOf, setBestOf] = useState(41);
   
   // 400 Specific State
   const [phase, setPhase] = useState<'bidding' | 'scoring' | 'gameover'>('bidding');
-  // Store bids/results in a map by Player ID for safer access
   const [bids, setBids] = useState<Record<string, number>>({});
   const [results, setResults] = useState<Record<string, boolean>>({}); 
   
-  // Initialize Bids when players loaded
+  // --- LOAD DATA (Async) ---
   useEffect(() => {
+    const loadGameData = async () => {
+      // 1. Try loading from storage (Resume)
+      if (instanceId) {
+        const savedGame = await GameStorage.get(instanceId);
+        if (savedGame) {
+          setPlayers(savedGame.players);
+          setHistory(savedGame.history);
+          setRoundNum(savedGame.roundNum);
+          setMode(savedGame.mode);
+          setGameName(savedGame.title);
+          setBestOf(savedGame.bestOf || 41);
+          // Restore phase if possible, or default to bidding
+          setIsLoaded(true);
+          return;
+        }
+      }
+
+      // 2. If new game, initialize from Params
+      if (typeof params.playerNames === 'string') {
+        try {
+          let names = JSON.parse(params.playerNames);
+          // Reorder from NewGame [A1, A2, B1, B2] to Alternating [A1, B1, A2, B2]
+          if (params.mode === 'teams' && names.length === 4) {
+            names = [names[0], names[2], names[1], names[3]];
+          }
+          const initialPlayers = names.map((name: string, index: number) => ({
+            id: (index + 1).toString(), name, totalScore: 0, isDanger: false
+          }));
+          setPlayers(initialPlayers);
+          setMode((params.mode as 'solo' | 'teams') || 'teams');
+          setGameName((params.gameName as string) || "400");
+          setBestOf(params.bestOf ? Number(params.bestOf) : 41);
+          setIsLoaded(true);
+        } catch (e) { console.log(e); }
+      }
+    };
+    loadGameData();
+  }, [instanceId]);
+
+  // Initialize Round Inputs when round changes or loaded
+  useEffect(() => {
+    if (!isLoaded || players.length === 0) return;
+    
+    // Only reset if we don't have bids for the current round state (simple check)
+    // For a more robust restore, we'd save the 'phase' and 'current inputs' to storage too.
+    // Here we re-initialize defaults for the round.
     const initialBids: Record<string, number> = {};
     const initialResults: Record<string, boolean> = {};
     players.forEach(p => {
@@ -81,18 +110,20 @@ export default function FourHundredScreen() {
     });
     setBids(initialBids);
     setResults(initialResults);
-  }, [roundNum]); // Reset on new round
+  }, [roundNum, isLoaded, players.length]);
 
   // --- Logic ---
 
+  const currentTotalBids = Object.values(bids).reduce((a, b) => a + b, 0);
+  
   const getTableMinTotal = () => {
+    if (players.length === 0) return 11;
     const maxScore = Math.max(...players.map(p => p.totalScore));
     if (maxScore >= 40) return 13;
     if (maxScore >= 30) return 12;
     return 11;
   };
-
-  const currentTotalBids = Object.values(bids).reduce((a, b) => a + b, 0);
+  
   const requiredTotal = getTableMinTotal();
   const isBiddingValid = currentTotalBids >= requiredTotal;
 
@@ -122,17 +153,13 @@ export default function FourHundredScreen() {
       const points = calculatePoints(bid);
       const change = passed ? points : -points;
       
-      // Store for history
-      roundDetails[p.id] = {
-        score: change, 
-        bid: bid,
-        passed: passed
-      };
+      roundDetails[p.id] = { score: change, bid, passed };
 
       const newTotal = p.totalScore + change;
       return { 
         ...p, 
-        totalScore: newTotal,
+        totalScore: newTotal, 
+        // Danger: Red if score is negative
         isDanger: newTotal < 0 
       };
     });
@@ -144,8 +171,6 @@ export default function FourHundredScreen() {
     for (let i = 0; i < 4; i++) {
       const p = updatedPlayers[i];
       const partner = updatedPlayers[(i + 2) % 4];
-      
-      // Win if score >= 41 AND partner >= 0
       if (p.totalScore >= 41 && partner.totalScore >= 0) {
         Alert.alert("Game Over!", `${p.name} and ${partner.name} Win!`);
         setPhase('gameover');
@@ -159,20 +184,27 @@ export default function FourHundredScreen() {
 
   // --- Persistence ---
   useEffect(() => {
-    const gameState: any = {
-      id: "current-match",
+    if (!isLoaded) return;
+
+    const gameState: GameState = {
+      id: instanceId,
+      instanceId,
+      gameType: '400',
+      status: 'active',
       mode: 'teams',
       title: gameName, 
       roundLabel: `Round ${roundNum}`, 
-      lastPlayed: "Active Now",
+      lastPlayed: new Date().toISOString(),
       players,
       history,
       roundNum,
       bestOf,
-      isTeamScoreboard: false // 400 tracks individual scores
+      isTeamScoreboard: false // 400 uses individual scores
     };
     GameStorage.save(gameState);
-  }, [players, history, roundNum]);
+  }, [players, history, roundNum, isLoaded]);
+
+  if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
@@ -213,7 +245,6 @@ export default function FourHundredScreen() {
       {/* --- Main Content --- */}
       <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: Spacing.l, paddingBottom: 100, paddingTop: Spacing.xl }}>
-          
           {phase === 'bidding' ? (
             <View style={styles.biddingGrid}>
               {players.map(p => (
@@ -238,7 +269,6 @@ export default function FourHundredScreen() {
               ))}
             </View>
           )}
-
         </ScrollView>
       </View>
 
@@ -251,7 +281,7 @@ export default function FourHundredScreen() {
             disabled={!isBiddingValid}
           >
             <Text style={[GlobalStyles.primaryButtonText, !isBiddingValid && { color: Colors.textMuted }]}>
-              START ROUND
+              ENTER RESULTS
             </Text>
           </TouchableOpacity>
         ) : (
@@ -295,7 +325,6 @@ const ScoringCard = ({ player, bid, passed, onSetResult }: { player: Player, bid
       {/* Left: Info */}
       <View style={styles.scoringInfo}>
         <Text style={styles.playerNameSmall} numberOfLines={1}>{player.name}</Text>
-        {/* Removed Bid display as requested */}
       </View>
 
       {/* Right: Buttons */}
@@ -394,7 +423,7 @@ const styles = StyleSheet.create({
   },
   bidValueSmall: { fontSize: 24, fontWeight: 'bold', color: Colors.text },
 
-  // Scoring
+  // Scoring Cards
   scoringCardCompact: {
     backgroundColor: Colors.surface,
     borderRadius: 12,

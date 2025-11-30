@@ -13,47 +13,95 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-import { GameStorage, Player, RoundDetails, RoundHistory } from "../../services/game_storage";
-
-// --- Component ---
+import { GameState, GameStorage, Player, RoundDetails, RoundHistory } from "../../services/game_storage";
 
 export default function LeekhaScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-
-  // --- Initialization ---
-  const initializePlayers = (): Player[] => {
-    if (typeof params.playerNames === 'string') {
-      try {
-        let names = JSON.parse(params.playerNames);
-        // Team Reordering [A1, A2, B1, B2] -> [A1, B1, A2, B2] for Teams
-        if (params.mode === 'teams' && names.length === 4) {
-          names = [names[0], names[2], names[1], names[3]];
-        }
-        return names.map((name: string, index: number) => ({
-          id: (index + 1).toString(), name: name, totalScore: 0, isDanger: false
-        }));
-      } catch (e) { console.log(e); }
-    }
-    return [];
-  };
+  const instanceId = (params.instanceId as string) || (params.id as string);
 
   // --- State ---
-  const [players, setPlayers] = useState<Player[]>(initializePlayers);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundNum, setRoundNum] = useState(1);
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // Params
-  const [mode] = useState<'solo' | 'teams'>((params.mode as 'solo' | 'teams') || 'solo');
-  const [gameName] = useState((params.gameName as string) || "LEEKHA");
-  const [scoreLimit] = useState(params.scoreLimit ? Number(params.scoreLimit) : undefined);
-  const [bestOf] = useState(params.bestOf ? Number(params.bestOf) : 3); 
+  // Config
+  const [mode, setMode] = useState<'solo' | 'teams'>('solo');
+  const [gameName, setGameName] = useState("LEEKHA");
+  const [scoreLimit, setScoreLimit] = useState<number | undefined>(101);
+  const [bestOf, setBestOf] = useState<number>(3); 
 
   // Leekha Specific Input State
   const [hearts, setHearts] = useState<Record<string, number>>({ "1": 0, "2": 0, "3": 0, "4": 0 });
   const [qsHolder, setQsHolder] = useState<string | null>(null);
   const [tenHolder, setTenHolder] = useState<string | null>(null);
+
+  // --- LOAD DATA (Async) ---
+  useEffect(() => {
+    const loadGameData = async () => {
+      // 1. Try loading from storage (Resume)
+      if (instanceId) {
+        const savedGame = await GameStorage.get(instanceId);
+        if (savedGame) {
+          setPlayers(savedGame.players);
+          setHistory(savedGame.history);
+          setRoundNum(savedGame.roundNum);
+          setMode(savedGame.mode);
+          setGameName(savedGame.title);
+          setScoreLimit(savedGame.scoreLimit);
+          setBestOf(savedGame.bestOf || 3);
+          setIsLoaded(true);
+          return;
+        }
+      }
+
+      // 2. If new game, initialize from Params
+      if (typeof params.playerNames === 'string') {
+        try {
+          let names = JSON.parse(params.playerNames);
+          if (params.mode === 'teams' && names.length === 4) {
+            names = [names[0], names[2], names[1], names[3]];
+          }
+          const initialPlayers = names.map((name: string, index: number) => ({
+            id: (index + 1).toString(), name: name, totalScore: 0, isDanger: false
+          }));
+          setPlayers(initialPlayers);
+          setMode((params.mode as 'solo' | 'teams') || 'solo');
+          setGameName((params.gameName as string) || "LEEKHA");
+          setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 101);
+          setBestOf(params.bestOf ? Number(params.bestOf) : 3);
+          setIsLoaded(true);
+        } catch (e) { console.log("Error init new game", e); }
+      }
+    };
+    loadGameData();
+  }, [instanceId]);
+
+  // --- Persistence ---
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    const gameState: GameState = {
+      id: instanceId,
+      instanceId,
+      gameType: 'leekha',
+      status: 'active',
+      mode: mode,
+      title: gameName, 
+      roundLabel: `Round ${roundNum}`, 
+      lastPlayed: new Date().toISOString(),
+      players,
+      history,
+      roundNum,
+      scoreLimit,
+      bestOf,
+      isTeamScoreboard: false // Leekha tracks individual scores
+    };
+    GameStorage.save(gameState);
+  }, [players, history, roundNum, isLoaded]);
 
   // --- Logic ---
   const totalHeartsAssigned = Object.values(hearts).reduce((a, b) => a + b, 0);
@@ -62,13 +110,11 @@ export default function LeekhaScreen() {
   const getRoundPoints = (pid: string) => {
     let points = hearts[pid] || 0;
     if (qsHolder === pid) points += 13;
-    if (tenHolder === pid) points += 10; // UPDATED: Adds 10 points instead of subtracting
+    if (tenHolder === pid) points += 10;
     return points;
   };
 
   const currentTotalPoints = players.reduce((sum, p) => sum + getRoundPoints(p.id), 0);
-  // Validation: Hearts must be 0 (all 13 assigned), Cards must be assigned
-  // In standard Leekha with +10 rule: Total = 13 (hearts) + 13 (QS) + 10 (10D) = 36.
   const isRoundValid = remainingHearts === 0 && qsHolder !== null && tenHolder !== null && currentTotalPoints === 36;
 
   // --- Handlers ---
@@ -81,19 +127,11 @@ export default function LeekhaScreen() {
   };
 
   const toggleQS = (pid: string) => {
-    setQsHolder(prev => {
-      if (prev === pid) return null; // Unassign if self
-      if (prev !== null) return prev; // Block if held by others
-      return pid;
-    });
+    setQsHolder(prev => (prev === pid ? null : (prev !== null ? prev : pid)));
   };
 
   const toggleTen = (pid: string) => {
-    setTenHolder(prev => {
-      if (prev === pid) return null; // Unassign if self
-      if (prev !== null) return prev; // Block if held by others
-      return pid;
-    });
+    setTenHolder(prev => (prev === pid ? null : (prev !== null ? prev : pid)));
   };
 
   const submitRound = () => {
@@ -116,42 +154,22 @@ export default function LeekhaScreen() {
       return {
         ...p,
         totalScore: newTotal,
-        // Danger: Red if score is within 15% of the limit (i.e., >= 85% of scoreLimit)
-        isDanger: scoreLimit ? newTotal >= (scoreLimit * 0.85) : false
+        // Danger: Red if score is close to limit (e.g. >= 85% of limit)
+        isDanger: scoreLimit ? newTotal >= (scoreLimit * 0.85) : false 
       };
     });
     setPlayers(updatedPlayers);
     
-    // Check Loser (Game Over)
     const loser = updatedPlayers.find(p => scoreLimit && p.totalScore >= scoreLimit);
     if (loser) {
       Alert.alert("Game Over", `${loser.name} has reached the limit!`);
     }
 
-    // Reset
     setHearts({ "1": 0, "2": 0, "3": 0, "4": 0 });
     setQsHolder(null);
     setTenHolder(null);
     setRoundNum(prev => prev + 1);
   };
-
-  // --- Persistence ---
-  useEffect(() => {
-    const gameState: any = {
-      id: "current-match",
-      mode,
-      title: gameName, 
-      roundLabel: `Round ${roundNum}`, 
-      lastPlayed: "Active Now",
-      players,
-      history,
-      roundNum,
-      scoreLimit,
-      bestOf,
-      isTeamScoreboard: false // Leekha tracks individual scores
-    };
-    GameStorage.save(gameState);
-  }, [players, history, roundNum, bestOf]);
 
   // --- Helper: Render Last Round Icons ---
   const renderLastRoundIcons = (p: Player) => {
@@ -176,6 +194,8 @@ export default function LeekhaScreen() {
       </View>
     );
   };
+
+  if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
