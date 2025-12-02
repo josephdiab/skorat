@@ -3,6 +3,7 @@ import { Check, Crown, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +15,9 @@ import { GameHeader } from "../../components/game_header";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameState, GameStorage, Player, RoundHistory } from "../../services/game_storage";
+
+// --- Types ---
+type Phase = 'bidding' | 'scoring';
 
 // --- Component ---
 
@@ -37,10 +41,18 @@ export default function TarneebScreen() {
   const [bestOf, setBestOf] = useState(3);
   
   // Tarneeb Specific State
-  const [phase, setPhase] = useState<'bidding' | 'scoring'>('bidding');
+  const [phase, setPhase] = useState<Phase>('bidding');
   const [callingTeam, setCallingTeam] = useState<'A' | 'B' | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(7);
   const [tricksTaken, setTricksTaken] = useState<number>(7);
+
+  // Edit Mode State
+  const [editingRound, setEditingRound] = useState<{
+    index: number;
+    callingTeam: 'A' | 'B';
+    bidAmount: number;
+    tricksTaken: number;
+  } | null>(null);
 
   // Helper for Team Names (for UI display)
   const [teamNames, setTeamNames] = useState({ A: "Team A", B: "Team B" });
@@ -58,11 +70,12 @@ export default function TarneebScreen() {
           setGameName(savedGame.title);
           setScoreLimit(savedGame.scoreLimit || 31);
           setBestOf(savedGame.bestOf || 3);
-          // Restore team names from saved player objects
-          setTeamNames({
-            A: savedGame.players[0].name,
-            B: savedGame.players[1].name
-          });
+          
+          // Restore names for UI buttons
+          const namesA = savedGame.players[0].name.includes("&") ? savedGame.players[0].name : "Team A";
+          const namesB = savedGame.players[1].name.includes("&") ? savedGame.players[1].name : "Team B";
+          setTeamNames({ A: namesA, B: namesB });
+          
           setIsLoaded(true);
           return;
         }
@@ -98,53 +111,47 @@ export default function TarneebScreen() {
   }, [instanceId]);
 
   // --- Logic ---
-
   const isBidValid = callingTeam !== null;
 
-  const getResultPreview = () => {
-    if (!callingTeam) return null;
-    
-    const success = tricksTaken >= bidAmount;
-    
-    let pointsA = 0;
-    let pointsB = 0;
+  // Shared logic to calculate scores for a round
+  const calculateRoundScores = (caller: 'A' | 'B' | null, bid: number, tricks: number) => {
+    if (!caller) return null; // Should guard against null caller
 
-    // Caller: +Tricks if success, -Bid if fail
-    const callerPoints = success ? tricksTaken : -bidAmount;
-    
-    // Defender: 0 if caller success, 13-Tricks if caller fail
-    const defenderPoints = success ? 0 : (13 - tricksTaken);
+    const success = tricks >= bid;
+    const callerPoints = success ? tricks : -bid;
+    const defenderPoints = success ? 0 : (13 - tricks);
 
-    if (callingTeam === 'A') {
-      pointsA = callerPoints;
-      pointsB = defenderPoints;
-    } else {
-      pointsB = callerPoints;
-      pointsA = defenderPoints;
-    }
-
-    return { callingTeam, success, pointsA, pointsB };
+    return {
+      pointsA: caller === 'A' ? callerPoints : defenderPoints,
+      pointsB: caller === 'B' ? callerPoints : defenderPoints,
+      success
+    };
   };
 
   // --- Handlers ---
-
   const commitRound = () => {
     if (!callingTeam) return;
     
-    const result = getResultPreview();
+    const result = calculateRoundScores(callingTeam, bidAmount, tricksTaken);
     if (!result) return;
 
     const roundDetails: Record<string, any> = {};
     
     const updatedTeams = teams.map(t => {
       const pointsChange = t.id === 'A' ? result.pointsA : result.pointsB;
-      roundDetails[t.id] = { score: pointsChange };
-      const newTotal = t.totalScore + pointsChange;
       
+      // Save meta-data for editing later
+      roundDetails[t.id] = {
+        score: pointsChange,
+        isCaller: t.id === callingTeam,
+        bid: bidAmount,
+        tricks: tricksTaken
+      };
+
+      const newTotal = t.totalScore + pointsChange;
       return { 
         ...t, 
         totalScore: newTotal,
-        // Danger: Red if score is negative
         isDanger: newTotal < 0 
       };
     });
@@ -152,13 +159,11 @@ export default function TarneebScreen() {
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
     setTeams(updatedTeams);
 
-    // Check Win
     const winner = updatedTeams.find(t => t.totalScore >= scoreLimit);
     if (winner) {
       Alert.alert("Game Over!", `${winner.name} Wins!`);
     } 
 
-    // Reset
     setRoundNum(prev => prev + 1);
     setCallingTeam(null);
     setBidAmount(7);
@@ -166,10 +171,78 @@ export default function TarneebScreen() {
     setPhase('bidding');
   };
 
+  // --- Editing Handlers ---
+  const startEditingRound = (index: number) => {
+    const round = history[index];
+    
+    // Cast to 'any' to access Tarneeb-specific properties (isCaller, bid, tricks)
+    // which are not present on the strict RoundDetails type.
+    const detailsA = round.playerDetails['A'] as any;
+    const detailsB = round.playerDetails['B'] as any;
+    
+    let caller: 'A' | 'B' = 'A';
+    let bid = 7;
+    let tricks = 7;
+
+    if (detailsA?.isCaller) {
+      caller = 'A';
+      bid = detailsA.bid;
+      tricks = detailsA.tricks;
+    } else if (detailsB?.isCaller) {
+      caller = 'B';
+      bid = detailsB.bid;
+      tricks = detailsB.tricks;
+    }
+
+    setEditingRound({ 
+      index, 
+      callingTeam: caller, 
+      bidAmount: bid, 
+      tricksTaken: tricks 
+    });
+  };
+
+  const saveEditedRound = () => {
+    if (!editingRound) return;
+
+    const result = calculateRoundScores(editingRound.callingTeam, editingRound.bidAmount, editingRound.tricksTaken);
+    if (!result) return;
+
+    const newHistory = [...history];
+    const roundDetails: Record<string, any> = {};
+
+    // Rebuild round details
+    roundDetails['A'] = {
+      score: result.pointsA,
+      isCaller: editingRound.callingTeam === 'A',
+      bid: editingRound.bidAmount,
+      tricks: editingRound.tricksTaken
+    };
+    roundDetails['B'] = {
+      score: result.pointsB,
+      isCaller: editingRound.callingTeam === 'B',
+      bid: editingRound.bidAmount,
+      tricks: editingRound.tricksTaken
+    };
+
+    newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
+
+    // Recalculate Totals
+    const recalculatedTeams = teams.map(t => {
+      const totalScore = newHistory.reduce((sum, round) => {
+        return sum + (round.playerDetails[t.id]?.score || 0);
+      }, 0);
+      return { ...t, totalScore, isDanger: totalScore < 0 };
+    });
+
+    setHistory(newHistory);
+    setTeams(recalculatedTeams);
+    setEditingRound(null);
+  };
+
   // --- Persistence ---
   useEffect(() => {
     if (!isLoaded) return;
-
     const gameState: GameState = {
       id: instanceId,
       instanceId,
@@ -184,7 +257,7 @@ export default function TarneebScreen() {
       roundNum,
       scoreLimit,
       bestOf,
-      isTeamScoreboard: true // TARNEEB IS A TEAM SCOREBOARD
+      isTeamScoreboard: true
     };
     GameStorage.save(gameState);
   }, [teams, history, roundNum, isLoaded]);
@@ -206,21 +279,26 @@ export default function TarneebScreen() {
         history={history}
         isExpanded={isExpanded}
         toggleExpand={() => setIsExpanded(!isExpanded)}
+        onEditRound={startEditingRound}
       />
 
       {/* --- Fixed Status Bar --- */}
       <View style={styles.statusRowFixed}>
         {phase === 'bidding' ? (
-          <Text style={styles.phaseTitle}>Bidding Phase</Text>
-        ) : (
-          <View style={GlobalStyles.row}>
-             <Text style={styles.phaseTitle}>Playing Round</Text>
-             <View style={styles.bidBadge}>
-                <Text style={styles.bidBadgeText}>
-                   {bidAmount} by Team {callingTeam}
+          <>
+            <Text style={styles.phaseTitle}>Place Bids</Text>
+            <View style={[styles.badge, isBidValid ? styles.badgeSuccess : styles.badgeError]}>
+                <Text style={[styles.badgeText, isBidValid ? { color: Colors.primary } : { color: Colors.danger }]}>
+                  {/* Corrected variable name here from isBiddingValid to isBidValid */}
+                  Total: {isBidValid ? bidAmount : 0}
                 </Text>
-             </View>
-          </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.phaseTitle}>Round Results</Text>
+            <Text style={GlobalStyles.textSmall}>Select Outcome</Text>
+          </>
         )}
       </View>
 
@@ -242,7 +320,7 @@ export default function TarneebScreen() {
               callingTeam={callingTeam} 
               tricksTaken={tricksTaken} 
               setTricksTaken={setTricksTaken} 
-              preview={getResultPreview()} 
+              preview={calculateRoundScores(callingTeam, bidAmount, tricksTaken)} 
             />
           )}
 
@@ -262,96 +340,143 @@ export default function TarneebScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity 
-            style={GlobalStyles.primaryButton} 
-            onPress={commitRound}
-          >
+          <TouchableOpacity style={GlobalStyles.primaryButton} onPress={commitRound}>
             <Text style={GlobalStyles.primaryButtonText}>CONFIRM SCORE</Text>
           </TouchableOpacity>
         )}
       </View>
 
+      {/* --- Edit Modal --- */}
+      {editingRound && (
+        <Modal animationType="slide" transparent={true} visible={true}>
+           <View style={styles.modalOverlay}>
+             <View style={styles.modalContent}>
+               <Text style={styles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
+               
+               <ScrollView style={{ maxHeight: 400 }}>
+                 <View style={{gap: 20}}>
+                   <View>
+                     <Text style={[styles.sectionLabel, {marginBottom: 10}]}>Bidding</Text>
+                     <BiddingPhase 
+                        callingTeam={editingRound.callingTeam} 
+                        setCallingTeam={(t: any) => setEditingRound(prev => prev ? ({...prev, callingTeam: t}) : null)}
+                        bidAmount={editingRound.bidAmount} 
+                        setBidAmount={(b: any) => setEditingRound(prev => prev ? ({...prev, bidAmount: b}) : null)}
+                        setTricksTaken={() => {}} 
+                        teamNames={teamNames}
+                        isModal={true} // Use Compact Mode
+                     />
+                   </View>
+                   
+                   <View style={{borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 20}}>
+                     <Text style={[styles.sectionLabel, {marginBottom: 10}]}>Result</Text>
+                     <ScoringPhase 
+                        callingTeam={editingRound.callingTeam} 
+                        tricksTaken={editingRound.tricksTaken} 
+                        setTricksTaken={(t: any) => setEditingRound(prev => prev ? ({...prev, tricksTaken: typeof t === 'function' ? t(prev.tricksTaken) : t}) : null)}
+                        preview={calculateRoundScores(editingRound.callingTeam, editingRound.bidAmount, editingRound.tricksTaken)}
+                        isModal={true} // Use Compact Mode
+                     />
+                   </View>
+                 </View>
+               </ScrollView>
+
+               <View style={styles.modalFooter}>
+                 <TouchableOpacity onPress={() => setEditingRound(null)} style={styles.modalCancel}>
+                   <Text style={{color: Colors.textMuted}}>Cancel</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity onPress={saveEditedRound} style={styles.modalSave}>
+                   <Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text>
+                 </TouchableOpacity>
+               </View>
+             </View>
+           </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
 
 // --- Sub-Components ---
 
-const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, setTricksTaken, teamNames }: any) => (
+const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, setTricksTaken, teamNames, isModal = false }: any) => (
   <>
-    <Text style={styles.sectionLabel}>Which team is calling?</Text>
-    <View style={styles.grid}>
+    <Text style={[styles.sectionLabel, isModal && {fontSize: 10, marginBottom: 4}]}>Which team is calling?</Text>
+    <View style={[styles.grid, isModal && {gap: 8}]}>
       {['A', 'B'].map((team) => (
         <TouchableOpacity
           key={team}
-          style={[styles.playerOption, callingTeam === team && styles.playerOptionActive]}
+          style={[
+            styles.playerOption, 
+            callingTeam === team && styles.playerOptionActive,
+            isModal && { padding: 12, borderRadius: 12 } // Compact style
+          ]}
           onPress={() => setCallingTeam(team)}
           activeOpacity={0.8}
         >
-          <Text style={[styles.teamNameBig, callingTeam === team && { color: Colors.primary }]}>Team {team}</Text>
-          <Text style={styles.teamPlayers}>{teamNames[team]}</Text>
-          {callingTeam === team && <Crown size={20} color={Colors.primary} style={{marginTop: 8}} />}
+          <Text style={[styles.teamNameBig, callingTeam === team && { color: Colors.primary }, isModal && {fontSize: 16, marginBottom: 2}]}>Team {team}</Text>
+          <Text style={[styles.teamPlayers, isModal && {fontSize: 10}]}>{teamNames[team]}</Text>
+          {callingTeam === team && <Crown size={isModal ? 16 : 20} color={Colors.primary} style={{marginTop: isModal ? 4 : 8}} />}
         </TouchableOpacity>
       ))}
     </View>
 
-    <Text style={[styles.sectionLabel, { marginTop: Spacing.l }]}>Call Amount</Text>
-    <View style={styles.bidGrid}>
+    <Text style={[styles.sectionLabel, { marginTop: Spacing.l }, isModal && {marginTop: Spacing.m, fontSize: 10, marginBottom: 4}]}>Call Amount</Text>
+    <View style={[styles.bidGrid, isModal && {gap: 8}]}>
       {[7, 8, 9, 10, 11, 12, 13].map(num => (
         <TouchableOpacity
           key={num}
-          style={[styles.bidOption, bidAmount === num && styles.bidOptionActive]}
+          style={[
+            styles.bidOption, 
+            bidAmount === num && styles.bidOptionActive,
+            isModal && {width: 40, height: 40, borderRadius: 20} // Compact style
+          ]}
           onPress={() => {
             setBidAmount(num);
-            setTricksTaken(num); 
+            setTricksTaken(num); // Auto-set
           }}
           activeOpacity={0.8}
         >
-          <Text style={[styles.bidOptionText, bidAmount === num && { color: '#000' }]}>
-            {num}
-          </Text>
+          <Text style={[styles.bidOptionText, bidAmount === num && { color: '#000' }, isModal && {fontSize: 14}]}>{num}</Text>
         </TouchableOpacity>
       ))}
     </View>
   </>
 );
 
-const ScoringPhase = ({ callingTeam, tricksTaken, setTricksTaken, preview }: any) => (
-  <View style={styles.scoringContainer}>
-     <View style={styles.counterCard}>
-       <Text style={styles.counterLabel}>Tricks Taken by Team {callingTeam}</Text>
-       <View style={styles.counterRow}>
-          <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.max(0, p - 1))} style={styles.counterBtn}>
-            <Text style={styles.counterBtnText}>-</Text>
+const ScoringPhase = ({ callingTeam, tricksTaken, setTricksTaken, preview, isModal = false }: any) => (
+  <View style={[styles.scoringContainer, isModal && {gap: 12, flexDirection: 'row'}]}>
+     <View style={[styles.counterCard, isModal && {padding: 12, flex: 1}]}>
+       <Text style={[styles.counterLabel, isModal && {fontSize: 10, marginBottom: 8, textAlign: 'center'}]}>{isModal ? `Tricks (${callingTeam})` : `Tricks Taken by Team ${callingTeam}`}</Text>
+       <View style={[styles.counterRow, isModal && {gap: 8, justifyContent: 'center'}]}>
+          <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.max(0, p - 1))} style={[styles.counterBtn, isModal && {width: 32, height: 32, borderRadius: 16}]}>
+            <Text style={[styles.counterBtnText, isModal && {fontSize: 20, marginTop: -2}]}>-</Text>
           </TouchableOpacity>
-          <Text style={styles.counterValue}>{tricksTaken}</Text>
-          <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.min(13, p + 1))} style={styles.counterBtn}>
-            <Text style={styles.counterBtnText}>+</Text>
+          <Text style={[styles.counterValue, isModal && {fontSize: 28, minWidth: 30}]}>{tricksTaken}</Text>
+          <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.min(13, p + 1))} style={[styles.counterBtn, isModal && {width: 32, height: 32, borderRadius: 16}]}>
+            <Text style={[styles.counterBtnText, isModal && {fontSize: 20, marginTop: -2}]}>+</Text>
           </TouchableOpacity>
        </View>
      </View>
 
      {preview && (
-       <View style={[styles.previewCard, preview.success ? styles.previewSuccess : styles.previewFail]}>
+       <View style={[styles.previewCard, preview.success ? styles.previewSuccess : styles.previewFail, isModal && {padding: 12, flex: 1}]}>
           <View style={GlobalStyles.rowBetween}>
              <View style={GlobalStyles.row}>
-                {preview.success 
-                  ? <Check size={24} color={Colors.primary} /> 
-                  : <X size={24} color={Colors.danger} />
-                }
-                <Text style={styles.previewTitle}>{preview.success ? "Successful Call" : "Failed Call"}</Text>
+                {preview.success ? <Check size={isModal ? 16 : 24} color={Colors.primary} /> : <X size={isModal ? 16 : 24} color={Colors.danger} />}
+                <Text style={[styles.previewTitle, isModal && {fontSize: 14, marginLeft: 6}]}>{preview.success ? "Success" : "Failed"}</Text>
              </View>
           </View>
-          <View style={styles.divider} />
+          <View style={[styles.divider, isModal && {marginVertical: 8}]} />
           <View style={GlobalStyles.rowBetween}>
-             <Text style={styles.previewSub}>Team A</Text>
-             <Text style={[styles.previewSubScore, { color: preview.pointsA >= 0 ? Colors.text : Colors.danger }]}>
+             <Text style={[styles.previewSub, isModal && {fontSize: 10}]}>Team A</Text>
+             <Text style={[styles.previewSubScore, { color: preview.pointsA >= 0 ? Colors.text : Colors.danger }, isModal && {fontSize: 14}]}>
                {preview.pointsA > 0 ? '+' : ''}{preview.pointsA}
              </Text>
           </View>
-          <View style={[GlobalStyles.rowBetween, { marginTop: 8 }]}>
-             <Text style={styles.previewSub}>Team B</Text>
-             <Text style={[styles.previewSubScore, { color: preview.pointsB >= 0 ? Colors.text : Colors.danger }]}>
+          <View style={[GlobalStyles.rowBetween, { marginTop: isModal ? 4 : 8 }]}>
+             <Text style={[styles.previewSub, isModal && {fontSize: 10}]}>Team B</Text>
+             <Text style={[styles.previewSubScore, { color: preview.pointsB >= 0 ? Colors.text : Colors.danger }, isModal && {fontSize: 14}]}>
                {preview.pointsB > 0 ? '+' : ''}{preview.pointsB}
              </Text>
           </View>
@@ -467,4 +592,26 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
+  
+  // Badge styles
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+  },
+  badgeSuccess: { backgroundColor: 'rgba(15, 157, 88, 0.1)', borderColor: Colors.primary },
+  badgeError: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: Colors.danger },
+  badgeText: { fontSize: 12, fontWeight: 'bold' },
+
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', padding: 10 },
+  modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, paddingBottom: 30 },
+  modalTitle: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, paddingTop: 20, borderTopWidth: 1, borderTopColor: Colors.border },
+  modalCancel: { padding: 12 },
+  modalSave: { backgroundColor: Colors.primary, padding: 12, borderRadius: 8 },
 });
