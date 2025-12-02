@@ -3,6 +3,7 @@ import { ThumbsDown, ThumbsUp } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -53,11 +54,18 @@ export default function FourHundredScreen() {
   const [phase, setPhase] = useState<'bidding' | 'scoring' | 'gameover'>('bidding');
   const [bids, setBids] = useState<Record<string, number>>({});
   const [results, setResults] = useState<Record<string, boolean>>({}); 
+
+  // Edit Mode State
+  const [editingRound, setEditingRound] = useState<{
+    index: number;
+    bids: Record<string, number>;
+    results: Record<string, boolean>;
+  } | null>(null);
   
   // --- LOAD DATA (Async) ---
   useEffect(() => {
     const loadGameData = async () => {
-      // 1. Try loading from storage (Resume)
+      // 1. Try loading from storage
       if (instanceId) {
         const savedGame = await GameStorage.get(instanceId);
         if (savedGame) {
@@ -67,17 +75,16 @@ export default function FourHundredScreen() {
           setMode(savedGame.mode);
           setGameName(savedGame.title);
           setBestOf(savedGame.bestOf || 41);
-          // Restore phase if possible, or default to bidding
           setIsLoaded(true);
+          // Initialize bids for next round if needed
           return;
         }
       }
 
-      // 2. If new game, initialize from Params
+      // 2. If new game, initialize
       if (typeof params.playerNames === 'string') {
         try {
           let names = JSON.parse(params.playerNames);
-          // Reorder from NewGame [A1, A2, B1, B2] to Alternating [A1, B1, A2, B2]
           if (params.mode === 'teams' && names.length === 4) {
             names = [names[0], names[2], names[1], names[3]];
           }
@@ -95,13 +102,9 @@ export default function FourHundredScreen() {
     loadGameData();
   }, [instanceId]);
 
-  // Initialize Round Inputs when round changes or loaded
+  // Initialize Round Inputs
   useEffect(() => {
     if (!isLoaded || players.length === 0) return;
-    
-    // Only reset if we don't have bids for the current round state (simple check)
-    // For a more robust restore, we'd save the 'phase' and 'current inputs' to storage too.
-    // Here we re-initialize defaults for the round.
     const initialBids: Record<string, number> = {};
     const initialResults: Record<string, boolean> = {};
     players.forEach(p => {
@@ -144,6 +147,7 @@ export default function FourHundredScreen() {
     setBids(prev => ({ ...prev, [pid]: newBid }));
   };
 
+  // -- Commit Round Logic --
   const commitRound = () => {
     const roundDetails: Record<string, any> = {};
     
@@ -159,7 +163,6 @@ export default function FourHundredScreen() {
       return { 
         ...p, 
         totalScore: newTotal, 
-        // Danger: Red if score is negative
         isDanger: newTotal < 0 
       };
     });
@@ -167,7 +170,7 @@ export default function FourHundredScreen() {
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
     setPlayers(updatedPlayers);
 
-    // Check Win Condition (Partner support)
+    // Check Win
     for (let i = 0; i < 4; i++) {
       const p = updatedPlayers[i];
       const partner = updatedPlayers[(i + 2) % 4];
@@ -180,6 +183,61 @@ export default function FourHundredScreen() {
 
     setRoundNum(prev => prev + 1);
     setPhase('bidding');
+  };
+
+  // -- Editing Logic --
+
+  const startEditingRound = (index: number) => {
+    const round = history[index];
+    const editBids: Record<string, number> = {};
+    const editResults: Record<string, boolean> = {};
+
+    // Extract historic data
+    Object.keys(round.playerDetails).forEach(pid => {
+      editBids[pid] = round.playerDetails[pid].bid;
+      editResults[pid] = round.playerDetails[pid].passed;
+    });
+
+    setEditingRound({ index, bids: editBids, results: editResults });
+  };
+
+  const saveEditedRound = () => {
+    if (!editingRound) return;
+
+    // 1. Update History Item
+    const newHistory = [...history];
+    const roundDetails: Record<string, any> = {};
+    
+    players.forEach(p => {
+      const bid = editingRound.bids[p.id];
+      const passed = editingRound.results[p.id];
+      const points = calculatePoints(bid);
+      const change = passed ? points : -points;
+      roundDetails[p.id] = { score: change, bid, passed };
+    });
+
+    newHistory[editingRound.index] = { 
+      ...newHistory[editingRound.index], 
+      playerDetails: roundDetails 
+    };
+
+    // 2. Recalculate ALL Total Scores from scratch
+    // This ensures subsequent rounds (which might rely on Min Bid rules) imply correct totals
+    const recalculatedPlayers = players.map(p => {
+      const totalScore = newHistory.reduce((sum, round) => {
+        return sum + (round.playerDetails[p.id]?.score || 0);
+      }, 0); // Start from 0
+
+      return {
+        ...p,
+        totalScore,
+        isDanger: totalScore < 0
+      };
+    });
+
+    setHistory(newHistory);
+    setPlayers(recalculatedPlayers);
+    setEditingRound(null);
   };
 
   // --- Persistence ---
@@ -199,7 +257,7 @@ export default function FourHundredScreen() {
       history,
       roundNum,
       bestOf,
-      isTeamScoreboard: false // 400 uses individual scores
+      isTeamScoreboard: false
     };
     GameStorage.save(gameState);
   }, [players, history, roundNum, isLoaded]);
@@ -221,6 +279,7 @@ export default function FourHundredScreen() {
         history={history}
         isExpanded={isExpanded}
         toggleExpand={() => setIsExpanded(!isExpanded)}
+        onEditRound={startEditingRound}
       />
 
       {/* --- Fixed Status Bar --- */}
@@ -290,60 +349,90 @@ export default function FourHundredScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* --- Edit Modal --- */}
+      {editingRound && (
+        <Modal animationType="slide" transparent={true} visible={true}>
+           <View style={styles.modalOverlay}>
+             <View style={styles.modalContent}>
+               <Text style={styles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
+               <ScrollView style={{ maxHeight: 400 }}>
+                 <View style={{ gap: 12 }}>
+                   {players.map(p => {
+                     const bid = editingRound.bids[p.id];
+                     const passed = editingRound.results[p.id];
+                     return (
+                        <View key={p.id} style={styles.editRow}>
+                           <Text style={styles.editName}>{p.name}</Text>
+                           {/* Bid Adjuster */}
+                           <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
+                              <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.max(2, bid-1)}}) : null)}>
+                                 <Text style={styles.editBtn}>-</Text>
+                              </TouchableOpacity>
+                              <Text style={styles.editVal}>{bid}</Text>
+                              <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.min(13, bid+1)}}) : null)}>
+                                 <Text style={styles.editBtn}>+</Text>
+                              </TouchableOpacity>
+                           </View>
+                           {/* Pass/Fail Toggle */}
+                           <TouchableOpacity 
+                              style={[styles.editToggle, passed ? styles.wonActive : styles.brokeActive]}
+                              onPress={() => setEditingRound(prev => prev ? ({...prev, results: {...prev.results, [p.id]: !passed}}) : null)}
+                           >
+                              <Text style={{color: '#fff', fontSize: 12, fontWeight: 'bold'}}>
+                                {passed ? "WON" : "BROKE"}
+                              </Text>
+                           </TouchableOpacity>
+                        </View>
+                     );
+                   })}
+                 </View>
+               </ScrollView>
+               <View style={styles.modalFooter}>
+                 <TouchableOpacity onPress={() => setEditingRound(null)} style={styles.modalCancel}>
+                   <Text style={{color: Colors.textMuted}}>Cancel</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity onPress={saveEditedRound} style={styles.modalSave}>
+                   <Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text>
+                 </TouchableOpacity>
+               </View>
+             </View>
+           </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
 
 // --- Sub-Components ---
-
 const BiddingCard = ({ player, bid, onAdjust }: { player: Player, bid: number, onAdjust: (d: number) => void }) => (
   <View style={styles.biddingCard}>
     <View style={{ alignItems: 'center', marginBottom: 8 }}>
       <Text style={styles.playerNameSmall} numberOfLines={1}>{player.name}</Text>
       <Text style={styles.minBidTextSmall}>Min: {getMinBidForPlayer(player.totalScore)}</Text>
     </View>
-    
     <View style={styles.controlsRowCompact}>
-      <TouchableOpacity onPress={() => onAdjust(-1)} style={styles.controlBtnSmall}>
-        <Text style={styles.controlBtnTextSmall}>-</Text>
-      </TouchableOpacity>
-      
+      <TouchableOpacity onPress={() => onAdjust(-1)} style={styles.controlBtnSmall}><Text style={styles.controlBtnTextSmall}>-</Text></TouchableOpacity>
       <Text style={styles.bidValueSmall}>{bid || 2}</Text>
-      
-      <TouchableOpacity onPress={() => onAdjust(1)} style={styles.controlBtnSmall}>
-        <Text style={styles.controlBtnTextSmall}>+</Text>
-      </TouchableOpacity>
+      <TouchableOpacity onPress={() => onAdjust(1)} style={styles.controlBtnSmall}><Text style={styles.controlBtnTextSmall}>+</Text></TouchableOpacity>
     </View>
   </View>
 );
 
 const ScoringCard = ({ player, bid, passed, onSetResult }: { player: Player, bid: number, passed: boolean, onSetResult: (res: boolean) => void }) => {
   const points = calculatePoints(bid);
-  
   return (
     <View style={styles.scoringCardCompact}>
-      {/* Left: Info */}
       <View style={styles.scoringInfo}>
         <Text style={styles.playerNameSmall} numberOfLines={1}>{player.name}</Text>
       </View>
-
-      {/* Right: Buttons */}
       <View style={styles.scoringButtonsContainer}>
-        <TouchableOpacity 
-          activeOpacity={0.8}
-          onPress={() => onSetResult(false)}
-          style={[styles.compactResultBtn, !passed ? styles.brokeActive : styles.buttonInactive]}
-        >
+        <TouchableOpacity activeOpacity={0.8} onPress={() => onSetResult(false)} style={[styles.compactResultBtn, !passed ? styles.brokeActive : styles.buttonInactive]}>
           <ThumbsDown size={14} color={!passed ? "#fff" : Colors.textMuted} />
           <Text style={[styles.toggleTextSmall, !passed && { color: '#fff' }]}>BROKE</Text>
           {!passed && <Text style={styles.scorePreviewSmall}>-{points}</Text>}
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          activeOpacity={0.8}
-          onPress={() => onSetResult(true)}
-          style={[styles.compactResultBtn, passed ? styles.wonActive : styles.buttonInactive]}
-        >
+        <TouchableOpacity activeOpacity={0.8} onPress={() => onSetResult(true)} style={[styles.compactResultBtn, passed ? styles.wonActive : styles.buttonInactive]}>
           <ThumbsUp size={14} color={passed ? "#fff" : Colors.textMuted} />
           <Text style={[styles.toggleTextSmall, passed && { color: '#fff' }]}>WON</Text>
           {passed && <Text style={styles.scorePreviewSmall}>+{points}</Text>}
@@ -354,121 +443,43 @@ const ScoringCard = ({ player, bid, passed, onSetResult }: { player: Player, bid
 };
 
 // --- Styles ---
-
 const styles = StyleSheet.create({
-  statusRowFixed: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.l,
-    paddingVertical: Spacing.m,
-    backgroundColor: Colors.background, 
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    zIndex: 5,
-  },
+  statusRowFixed: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.l, paddingVertical: Spacing.m, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border, zIndex: 5 },
   phaseTitle: { color: Colors.text, fontSize: 18, fontWeight: 'bold' },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
+  badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
   badgeSuccess: { backgroundColor: 'rgba(15, 157, 88, 0.1)', borderColor: Colors.primary },
   badgeError: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: Colors.danger },
   badgeText: { fontSize: 12, fontWeight: 'bold' },
-  
-  // Bidding Grid
-  biddingGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  biddingCard: {
-    width: '48%',
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  playerNameSmall: {
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-    flex: 1,
-  },
+  biddingGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 },
+  biddingCard: { width: '48%', backgroundColor: Colors.surface, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: Colors.border },
+  playerNameSmall: { color: Colors.text, fontSize: 16, fontWeight: '600', marginBottom: 2, flex: 1 },
   minBidTextSmall: { color: Colors.textMuted, fontSize: 10 },
-  controlsRowCompact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  controlBtnSmall: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.surfaceLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  controlBtnTextSmall: {
-    color: Colors.text,
-    fontSize: 20,
-    lineHeight: 22,
-    fontWeight: 'bold',
-  },
+  controlsRowCompact: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  controlBtnSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center' },
+  controlBtnTextSmall: { color: Colors.text, fontSize: 20, lineHeight: 22, fontWeight: 'bold' },
   bidValueSmall: { fontSize: 24, fontWeight: 'bold', color: Colors.text },
-
-  // Scoring Cards
-  scoringCardCompact: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 64,
-  },
-  scoringInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
+  scoringCardCompact: { backgroundColor: Colors.surface, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 64 },
+  scoringInfo: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   scoringButtonsContainer: { flexDirection: 'row', gap: 8 },
-  compactResultBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 4,
-    minWidth: 80,
-    justifyContent: 'center',
-  },
+  compactResultBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, gap: 4, minWidth: 80, justifyContent: 'center' },
   buttonInactive: { backgroundColor: Colors.surfaceInner, borderColor: Colors.border },
   brokeActive: { backgroundColor: 'rgba(255, 82, 82, 0.15)', borderColor: Colors.danger },
   wonActive: { backgroundColor: 'rgba(15, 157, 88, 0.15)', borderColor: Colors.primary },
   toggleTextSmall: { fontSize: 11, fontWeight: 'bold', color: Colors.textMuted },
   scorePreviewSmall: { fontSize: 11, fontWeight: 'bold', color: '#fff' },
-  
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: Spacing.l,
-    backgroundColor: Colors.background, 
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.l, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
   disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
+  
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20 },
+  modalTitle: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  editRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  editName: { color: Colors.text, width: 80, fontSize: 14, fontWeight: '600' },
+  editBtn: { color: Colors.text, fontSize: 24, fontWeight: 'bold', paddingHorizontal: 10 },
+  editVal: { color: Colors.text, fontSize: 18, fontWeight: 'bold', width: 30, textAlign: 'center' },
+  editToggle: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, minWidth: 80, alignItems: 'center' },
+  modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: Colors.border },
+  modalCancel: { padding: 12 },
+  modalSave: { backgroundColor: Colors.primary, padding: 12, borderRadius: 8 },
 });

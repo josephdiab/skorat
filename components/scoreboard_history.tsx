@@ -1,14 +1,14 @@
 import { ChevronDown, ChevronUp, Edit2 } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import {
-    LayoutAnimation,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    UIManager,
-    View,
+  LayoutAnimation,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  UIManager,
+  View,
 } from "react-native";
 import { Colors, GlobalStyles, Spacing } from "../constants/theme";
 import { Player, RoundHistory } from "../services/game_storage";
@@ -27,6 +27,8 @@ type ScoreboardHistoryProps = {
   toggleExpand: () => void;
   // Optional: Render custom content (like icons) below the score
   renderScoreExtra?: (player: Player) => React.ReactNode;
+  // New: Callback when a history row is clicked in edit mode
+  onEditRound?: (roundIndex: number) => void;
 };
 
 export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({ 
@@ -34,12 +36,16 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
   history, 
   isExpanded, 
   toggleExpand,
-  renderScoreExtra
+  renderScoreExtra,
+  onEditRound
 }) => {
+  const [isEditing, setIsEditing] = useState(false);
 
   const handleToggle = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     toggleExpand();
+    // Reset edit mode when collapsing
+    if (isExpanded) setIsEditing(false);
   };
 
   // Custom style logic for Danger (Red) status
@@ -56,14 +62,22 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
         activeOpacity={0.95} 
         onPress={handleToggle}
       >
-         {/* Header with Edit Button (visible when expanded) */}
+         {/* Header with Edit Button (Only visible when expanded) */}
          {isExpanded && (
            <View style={[GlobalStyles.rowBetween, { marginBottom: Spacing.m }]}>
              <Text style={GlobalStyles.textSmall}>MATCH HISTORY</Text>
-             <TouchableOpacity style={styles.editButton}>
-               <Edit2 size={14} color={Colors.textSecondary} />
-               <Text style={[GlobalStyles.textSmall, { marginLeft: 6 }]}>EDIT</Text>
-             </TouchableOpacity>
+             {/* Show Edit button only if there is history to edit */}
+             {history.length > 0 && (
+               <TouchableOpacity 
+                 style={[styles.editButton, isEditing && styles.editButtonActive]}
+                 onPress={() => setIsEditing(!isEditing)}
+               >
+                 <Edit2 size={12} color={isEditing ? Colors.primary : Colors.textSecondary} />
+                 <Text style={[styles.editText, isEditing && { color: Colors.primary }]}>
+                   {isEditing ? "DONE" : "EDIT"}
+                 </Text>
+               </TouchableOpacity>
+             )}
            </View>
          )}
 
@@ -83,10 +97,28 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
              <View style={{ maxHeight: 200 }}>
                <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
                  {history.map((h, index) => (
-                   <View key={index} style={[styles.scoreGrid, { marginBottom: Spacing.s }]}>
+                   <TouchableOpacity 
+                     key={index} 
+                     style={[
+                       styles.scoreGrid, 
+                       { marginBottom: Spacing.s, paddingVertical: 4 },
+                       isEditing && styles.historyRowEditing
+                     ]}
+                     disabled={!isEditing}
+                     onPress={() => onEditRound?.(index)}
+                     activeOpacity={0.7}
+                   >
+                      {/* Round Indicator / Edit Icon */}
+                      <View style={styles.roundNumContainer}>
+                        {isEditing ? (
+                          <Edit2 size={10} color={Colors.primary} />
+                        ) : (
+                          <Text style={styles.roundNum}>{index + 1}</Text>
+                        )}
+                      </View>
+
                       {players.map(p => {
                         // Handle specific structure (Leekha) vs generic
-                        // In Leekha history is stored as playerDetails[id].score
                         // @ts-ignore
                         const val = h.playerDetails ? h.playerDetails[p.id]?.score : (h.scores ? h.scores[p.id] : 0);
                         return (
@@ -95,10 +127,10 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
                           </Text>
                         );
                       })}
-                   </View>
+                   </TouchableOpacity>
                  ))}
                  {history.length === 0 && (
-                   <Text style={[styles.historyCell, { textAlign: 'center', marginVertical: Spacing.m, fontStyle: 'italic', opacity: 0.5 }]}>
+                   <Text style={styles.emptyText}>
                      No rounds recorded
                    </Text>
                  )}
@@ -153,7 +185,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
-  scoreGrid: { flexDirection: 'row' },
+  scoreGrid: { flexDirection: 'row', alignItems: 'center' },
   columnHeader: {
     flex: 1,
     textAlign: 'center',
@@ -180,5 +212,41 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 8,
   },
+  editButtonActive: {
+    backgroundColor: 'rgba(15, 157, 88, 0.15)',
+    borderColor: Colors.primary,
+    borderWidth: 1,
+  },
+  editText: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
   divider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.m },
+  // New Styles for Edit Functionality
+  roundNumContainer: {
+    position: 'absolute',
+    left: 0,
+    width: 20,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  roundNum: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    opacity: 0.5,
+  },
+  historyRowEditing: {
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 8,
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginVertical: Spacing.m,
+    fontStyle: 'italic',
+    opacity: 0.5,
+    color: Colors.textMuted,
+  },
 });
