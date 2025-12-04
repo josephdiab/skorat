@@ -1,9 +1,12 @@
+// --- START OF FILE: app\index.tsx ---
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { FlatList, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ENABLE_LOGS } from "../constants/config"; // Imported Config
 import { GlobalStyles, Spacing } from "../constants/theme";
-import { GameState, GameStorage } from "../services/game_storage";
+import { GameSummary } from "../constants/types";
+import { GameStorage } from "../services/game_storage";
 
 // Component Imports
 import { EmptyState } from "../components/empty_state";
@@ -12,25 +15,28 @@ import { Header } from "../components/header";
 import { MatchCard } from "../components/match_card";
 import { TabBar } from "../components/tab_bar";
 
-// --- Types ---
 type TabKey = "active" | "history";
-
-// --- Main Screen Component ---
 
 export default function Index() {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("active");
-  const [games, setGames] = useState<GameState[]>([]);
+  const [games, setGames] = useState<GameSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Load games from storage
   const loadGames = async () => {
     setIsLoading(true);
+    if (ENABLE_LOGS) console.log("--- REFRESHING GAMES LIST ---");
     const allGames = await GameStorage.getAll();
+    
     // Sort by newest first
     const sorted = allGames.sort((a, b) => 
       new Date(b.lastPlayed).getTime() - new Date(a.lastPlayed).getTime()
     );
+    
+    // DEBUG LOG
+    if (ENABLE_LOGS) console.log("Loaded Games:", JSON.stringify(sorted, null, 2));
+
     setGames(sorted);
     setIsLoading(false);
   };
@@ -42,38 +48,31 @@ export default function Index() {
     }, [])
   );
 
-  const handleResumeGame = (game: GameState) => {
-    // Route based on the saved game type
-    let routePath = "/games/scoreboard"; // Fallback
+  const handleResumeGame = (game: GameSummary) => {
+    let routePath = "/games/400"; 
     if (game.gameType === 'leekha') routePath = "/games/leekha";
     if (game.gameType === '400') routePath = "/games/400";
     if (game.gameType === 'tarneeb') routePath = "/games/tarneeb";
 
+    if (ENABLE_LOGS) console.log(`[NAV] Resuming game: ${game.title} (${game.id})`);
+
     router.push({ 
       pathname: routePath as any, 
       params: { 
-        instanceId: game.id, // Pass unique ID to load specific game data
+        instanceId: game.id, 
         resume: "true" 
       } 
     });
   };
 
   const handleDeleteGame = (gameId: string) => {
-    // The confirmation alert is handled inside MatchCard, 
-    // but we can also double-check or just perform the delete here.
-    // Since MatchCard has the UI for the alert, we just provide the action.
-    
     const performDelete = async () => {
       await GameStorage.remove(gameId);
-      loadGames(); // Refresh list after deletion
+      loadGames(); 
     };
-
     performDelete();
   };
 
-  // Filter games based on status (active vs completed)
-  // For V1, we assume everything is active until we implement a "Finish Game" feature
-  // You can manually filter based on logic if you add a 'status' field later
   const activeGames = games.filter(g => g.status !== 'completed');
   const historyGames = games.filter(g => g.status === 'completed');
 
@@ -81,21 +80,24 @@ export default function Index() {
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
-      {/* Header */}
       <Header
         title="SKORAT"
-        onPressProfile={() => console.log("Profile clicked")}
-        onPressSettings={() => console.log("Settings clicked")}
+        onPressProfile={() => {
+          if (ENABLE_LOGS) console.log("Profile clicked");
+        }}
+        onPressSettings={() => {
+          // Optional: Hidden trick to clear storage for testing
+          // GameStorage.clearAll().then(() => loadGames());
+          if (ENABLE_LOGS) console.log("Settings clicked");
+        }}
       />
 
-      {/* Tab Bar */}
       <TabBar
         activeTab={tab}
         activeCount={activeGames.length}
         onChangeTab={setTab}
       />
 
-      {/* Match List */}
       <FlatList
         data={displayData}
         keyExtractor={(item) => item.id}
@@ -105,14 +107,13 @@ export default function Index() {
         }
         renderItem={({ item }) => (
           <MatchCard
-            match={item}
+            match={item as any} 
             onPress={() => handleResumeGame(item)}
             onDelete={() => handleDeleteGame(item.id)}
           />
         )}
       />
 
-      {/* FAB */}
       <FloatingActionButton onPress={() => router.push("/games/new")} />
     </SafeAreaView>
   );
@@ -124,3 +125,4 @@ const styles = StyleSheet.create({
     paddingBottom: 100, 
   },
 });
+// --- END OF FILE: app\index.tsx ---

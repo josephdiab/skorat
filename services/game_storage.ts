@@ -1,118 +1,124 @@
+// --- START OF FILE: services\game_storage.ts ---
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ENABLE_LOGS } from '../constants/config'; // Imported Config
+import { GameState, GameSummary } from '../constants/types';
 
-// --- Types ---
-
-export type Player = {
-  id: string;
-  name: string;
-  totalScore: number;
-  isDanger: boolean;
-  isLeader?: boolean;
-};
-
-export type RoundDetails = {
-  score: number;
-  hearts: number;
-  hasQS: boolean;
-  hasTen: boolean;
-};
-
-export type RoundHistory = {
-  roundNum: number;
-  playerDetails: Record<string, RoundDetails>;
-};
-
-export type GameState = {
-  id: string; // Unique ID (instanceId)
-  instanceId: string; // Redundant but kept for compatibility with your current params
-  gameType: 'leekha' | 'tarneeb' | '400';
-  mode: 'solo' | 'teams';
-  title: string;
-  roundLabel: string;
-  lastPlayed: string; // ISO Date string
-  status: 'active' | 'completed'; // New field to filter tabs
-  players: Player[];
-  history: RoundHistory[];
-  roundNum: number;
-  scoreLimit?: number;
-  bestOf?: number;
-  isTeamScoreboard?: boolean; 
-};
-
-const STORAGE_KEY = '@skorat_games_v1';
+const INDEX_KEY = '@skorat_games_v1'; 
+const GAME_KEY_PREFIX = '@skorat_game_';
 
 export const GameStorage = {
-  // Save or Update a game
-  save: async (game: GameState) => {
+
+  // --- READ ---
+
+  // 1. Get List (Fast, only summaries from Index)
+  getAll: async (): Promise<GameSummary[]> => {
     try {
-      const existingData = await AsyncStorage.getItem(STORAGE_KEY);
-      let games: GameState[] = existingData ? JSON.parse(existingData) : [];
-      
-      const index = games.findIndex(g => g.id === game.id);
-      
-      const updatedGame = { 
-        ...game, 
-        lastPlayed: new Date().toISOString() // Update timestamp
-      };
-
-      if (index >= 0) {
-        games[index] = updatedGame;
-      } else {
-        games.unshift(updatedGame);
-      }
-
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+      const json = await AsyncStorage.getItem(INDEX_KEY);
+      const data = json ? JSON.parse(json) : [];
+      if (ENABLE_LOGS) console.log(`[STORAGE READ] Index Loaded: ${data.length} games found`);
+      return data;
     } catch (e) {
-      console.error("Failed to save game", e);
+      console.error("[STORAGE ERROR] Index Load Failed", e);
+      return [];
     }
   },
-  
-  // Get a specific game by ID
+
+  // 2. Get Full Game (Loads specific file for history)
   get: async (id: string): Promise<GameState | undefined> => {
     try {
-      const existingData = await AsyncStorage.getItem(STORAGE_KEY);
-      if (!existingData) return undefined;
+      // Direct file access
+      const json = await AsyncStorage.getItem(`${GAME_KEY_PREFIX}${id}`);
+      if (json) {
+        if (ENABLE_LOGS) console.log(`[STORAGE READ] Game Loaded: ${id}`);
+        return JSON.parse(json);
+      }
       
-      const games: GameState[] = JSON.parse(existingData);
-      return games.find(g => g.id === id);
+      if (ENABLE_LOGS) console.warn(`[STORAGE WARN] Game file missing for ${id}, checking index...`);
+      
+      // Fallback: If individual file is missing/corrupted, try to find in index
+      const index = await GameStorage.getAll();
+      const summary = index.find(g => g.id === id);
+      if (summary) {
+        return { ...summary, history: [] }; 
+      }
+      return undefined;
     } catch (e) {
-      console.error("Failed to get game", e);
+      console.error(`[STORAGE ERROR] Failed to load game ${id}`, e);
       return undefined;
     }
   },
 
-  // Get all games
-  getAll: async (): Promise<GameState[]> => {
+  // --- WRITE ---
+
+  save: async (game: GameState) => {
     try {
-      const existingData = await AsyncStorage.getItem(STORAGE_KEY);
-      return existingData ? JSON.parse(existingData) : [];
-    } catch (e) {
-      console.error("Failed to get all games", e);
-      return [];
-    }
-  },
-  
-  // Remove a game
-  remove: async (id: string) => {
-    try {
-      const existingData = await AsyncStorage.getItem(STORAGE_KEY);
-      if (!existingData) return;
+      const now = new Date().toISOString();
+      const gameWithTime = { ...game, lastPlayed: now };
+
+      if (ENABLE_LOGS) console.log(`[STORAGE WRITE] Saving Game: ${game.title} (ID: ${game.id})`);
+
+      // 1. Save Full Game to distinct key
+      const key = `${GAME_KEY_PREFIX}${game.id}`;
+      await AsyncStorage.setItem(key, JSON.stringify(gameWithTime));
+
+      // 2. Update Index (Lightweight Summary)
+      await GameStorage.updateIndex(gameWithTime);
       
-      const games: GameState[] = JSON.parse(existingData);
-      const filteredGames = games.filter(g => g.id !== id);
-      
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filteredGames));
     } catch (e) {
-      console.error("Failed to remove game", e);
+      console.error("[STORAGE ERROR] Save Failed", e);
     }
   },
 
-  // Clear all data (Debug use)
-  clear: async () => {
+  // Internal helper to update the summary list
+  updateIndex: async (fullGame: GameState) => {
     try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
+      const summaries = await GameStorage.getAll();
+      const index = summaries.findIndex(g => g.id === fullGame.id);
+
+      // Create Summary (Strip history to save space in Index)
+      const { history, ...summaryData } = fullGame;
+
+      if (index >= 0) {
+        summaries[index] = summaryData;
+      } else {
+        summaries.unshift(summaryData); // Add to top
+      }
+
+      await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(summaries));
+      if (ENABLE_LOGS) console.log(`[STORAGE WRITE] Index Updated`);
     } catch (e) {
-      console.error("Failed to clear storage", e);
+      console.error("[STORAGE ERROR] Index Update Failed", e);
+    }
+  },
+
+  // --- DELETE ---
+
+  remove: async (id: string) => {
+    try {
+      if (ENABLE_LOGS) console.log(`[STORAGE DELETE] Removing Game: ${id}`);
+      // 1. Remove specific file
+      await AsyncStorage.removeItem(`${GAME_KEY_PREFIX}${id}`);
+
+      // 2. Remove from Index
+      const summaries = await GameStorage.getAll();
+      const newSummaries = summaries.filter(g => g.id !== id);
+      await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(newSummaries));
+    } catch (e) {
+      console.error("[STORAGE ERROR] Delete Failed", e);
+    }
+  },
+
+  // --- DEBUG HELPER ---
+  clearAll: async () => {
+    try {
+      if (ENABLE_LOGS) console.log("[STORAGE DEBUG] Clearing ALL Data...");
+      const keys = await AsyncStorage.getAllKeys();
+      const skoratKeys = keys.filter(k => k.startsWith('@skorat_'));
+      await AsyncStorage.multiRemove(skoratKeys);
+      if (ENABLE_LOGS) console.log("[STORAGE DEBUG] Storage Cleared");
+    } catch (e) {
+      console.error(e);
     }
   }
 };
+// --- END OF FILE: services\game_storage.ts ---

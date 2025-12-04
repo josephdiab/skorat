@@ -1,7 +1,7 @@
 import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ScrollView,
+  ActivityIndicator,
   StyleSheet,
   Text,
   TextInput,
@@ -12,26 +12,25 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GAMES } from "../../constants/games";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-
-type BestOf = 1 | 3 | 5;
+import { UserProfile } from "../../constants/types";
+import { PlayerStorage } from "../../services/player_storage";
 
 export default function NewGameScreen() {
   const router = useRouter();
   
   // --- State ---
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
-  const [bestOf, setBestOf] = useState<BestOf>(3);
-  const [scoreLimit, setScoreLimit] = useState(GAMES[0].defaultLimit);
+  const [scoreLimit, setScoreLimit] = useState(41);
   const [players, setPlayers] = useState<string[]>(["", "", "", ""]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- Derived State ---
   const selectedGame = GAMES.find(g => g.id === selectedGameId);
   const mode = selectedGame ? (selectedGame.isTeam ? "teams" : "solo") : "teams";
   
-  // Check if form is ready to submit (Game selected + All names filled)
   const isFormValid = selectedGame && players.every(p => p.trim().length > 0);
 
-  // Reset score limit to the game's default whenever the selected game changes
+  // Update Score Limit options when Game Type changes
   useEffect(() => {
     if (selectedGame) {
       setScoreLimit(selectedGame.defaultLimit);
@@ -45,61 +44,76 @@ export default function NewGameScreen() {
   };
 
   const renderPlayerInput = (index: number) => {
-    // If Teams: Index 0,1 -> Team A; Index 2,3 -> Team B
-    let labelIndex = index + 1;
-    if (mode === 'teams') labelIndex = (index % 2) + 1; 
-
+    let placeholder = `Player ${index + 1}`;
+    
     return (
       <View 
         key={index} 
         style={[
           localStyles.gridItem, 
-          mode === 'solo' && { width: '100%' } // Solo = 1 per row
+          mode === 'solo' && { width: '100%' }
         ]}
       >
         <TextInput
           style={GlobalStyles.input}
-          placeholder={`Player Name`}
-          placeholderTextColor={Colors.primary} 
+          placeholder={placeholder}
+          placeholderTextColor={Colors.textMuted} 
           value={players[index]}
           onChangeText={(text) => updatePlayer(index, text)}
+          autoCapitalize="words"
         />
       </View>
     );
   };
 
-  const handleStart = () => {
-    // Validation is handled by the button state, but keep a check here just in case
+  const handleStart = async () => {
     if (!isFormValid || !selectedGame) return;
 
-    // Generate a unique ID for this specific match instance
-    const instanceId = Date.now().toString();
+    setIsSubmitting(true);
 
-    // Determine the correct route based on the game type
-    let routePath = "/games/scoreboard"; 
-    if (selectedGameId === 'leekha') routePath = "/games/leekha";
-    if (selectedGameId === '400') routePath = "/games/400";
-    if (selectedGameId === 'tarneeb') routePath = "/games/tarneeb";
+    try {
+      // 1. Resolve Players
+      // This calls getOrCreate, which checks memory for existing names (trimmed/lowercase)
+      const resolvedPlayers: UserProfile[] = await Promise.all(
+        players.map(async (name) => {
+          return await PlayerStorage.getOrCreate(name);
+        })
+      );
 
-    router.push({
-      pathname: routePath as any,
-      params: {
-        instanceId, // Unique ID for storage
-        gameType: selectedGameId, // "leekha", "tarneeb", etc.
-        playerNames: JSON.stringify(players),
-        mode,
-        gameName: selectedGame.name,
-        bestOf: bestOf.toString(),
-        scoreLimit: scoreLimit.toString()
-      }
-    });
+      // 2. Serialize for Params
+      const playerParams = JSON.stringify(resolvedPlayers);
+      const instanceId = Date.now().toString();
+
+      // 3. Determine Route
+      let routePath = "/games/400"; 
+      if (selectedGameId === 'leekha') routePath = "/games/leekha";
+      if (selectedGameId === 'tarneeb') routePath = "/games/tarneeb";
+
+      // 4. Navigate
+      router.replace({
+        pathname: routePath as any,
+        params: {
+          instanceId,
+          gameType: selectedGameId,
+          mode,
+          gameName: selectedGame.name,
+          scoreLimit: scoreLimit.toString(),
+          playerProfiles: playerParams, 
+          playerNames: JSON.stringify(players) 
+        }
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to start game. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Header */}
       <View style={[GlobalStyles.headerContainer, { paddingTop: Spacing.s }]}>
         <TouchableOpacity 
           onPress={router.back} 
@@ -123,13 +137,8 @@ export default function NewGameScreen() {
         enableAutomaticScroll={true}
       >
         
-        {/* Game Selection - Horizontal Cards */}
         <Section title="Select Game">
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 12, paddingRight: 20 }}
-          >
+          <View style={{ flexDirection: 'row', gap: 10 }}>
             {GAMES.map((game) => {
               const isActive = game.id === selectedGameId;
               return (
@@ -139,30 +148,22 @@ export default function NewGameScreen() {
                   onPress={() => setSelectedGameId(game.id)}
                   activeOpacity={0.8}
                 >
-                  <Text style={[localStyles.gameOptionText, isActive && localStyles.gameOptionTextActive]}>
+                  <Text 
+                    numberOfLines={1} 
+                    adjustsFontSizeToFit
+                    style={[localStyles.gameOptionText, isActive && localStyles.gameOptionTextActive]}
+                  >
                     {game.name}
                   </Text>
-                  {isActive && <Text style={{ color: Colors.primary, fontSize: 16, marginLeft: 8 }}>✓</Text>}
+                  {isActive && <Text style={{ color: Colors.primary, fontSize: 16, marginLeft: 4 }}>✓</Text>}
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
         </Section>
 
-        {/* ONLY Render the rest of the form if a game is selected */}
         {selectedGame && (
           <>
-            {/* Winning Condition */}
-            <Section title="Winning Condition">
-              <SegmentedControl
-                options={[1, 3, 5]}
-                labels={["Best of 1", "Best of 3", "Best of 5"]}
-                selected={bestOf}
-                onSelect={(v: any) => setBestOf(v)}
-              />
-            </Section>
-
-            {/* Score Limit (Dynamic based on selected game) */}
             <Section title="Score Limit">
               <SegmentedControl
                 options={selectedGame.scoreLimits}
@@ -172,7 +173,6 @@ export default function NewGameScreen() {
               />
             </Section>
 
-            {/* Players */}
             <Section title="Player Selection">
               {mode === 'solo' ? (
                 <View style={localStyles.grid}>
@@ -195,23 +195,26 @@ export default function NewGameScreen() {
               )}
             </Section>
 
-            {/* Footer */}
             <View style={localStyles.footerInline}>
               <TouchableOpacity 
                 style={[
                   GlobalStyles.primaryButton,
-                  !isFormValid && localStyles.disabledButton
+                  (!isFormValid || isSubmitting) && localStyles.disabledButton
                 ]} 
                 onPress={handleStart} 
                 activeOpacity={0.8}
-                disabled={!isFormValid}
+                disabled={!isFormValid || isSubmitting}
               >
-                <Text style={[
-                  GlobalStyles.primaryButtonText,
-                  !isFormValid && localStyles.disabledText
-                ]}>
-                  START GAME
-                </Text>
+                {isSubmitting ? (
+                  <ActivityIndicator color={Colors.textMuted} />
+                ) : (
+                  <Text style={[
+                    GlobalStyles.primaryButtonText,
+                    !isFormValid && localStyles.disabledText
+                  ]}>
+                    START GAME
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </>
@@ -221,8 +224,6 @@ export default function NewGameScreen() {
     </SafeAreaView>
   );
 }
-
-// --- Helpers ---
 
 const Section = ({ title, children }: any) => (
   <View style={GlobalStyles.card}>
@@ -255,79 +256,18 @@ const SegmentedControl = ({ options, labels, selected, onSelect }: any) => (
   </View>
 );
 
-// --- Local Styles ---
 const localStyles = StyleSheet.create({
-  footerInline: {
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.m,
-  },
-  disabledButton: {
-    backgroundColor: Colors.surfaceLight,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  disabledText: {
-    color: Colors.textMuted,
-  },
-  teamLabel: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "bold",
-    marginBottom: 6,
-    marginLeft: 6,
-    textTransform: "uppercase",
-    letterSpacing: 1
-  },
-  grid: {
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    marginHorizontal: -5 
-  },
-  gridItem: {
-    width: '50%', // Default 2 per row
-    padding: 5 
-  },
-  segmentTrack: {
-    flexDirection: "row", 
-    backgroundColor: Colors.surfaceLight, 
-    borderRadius: 18, 
-    padding: 2 
-  },
-  segmentBtn: {
-    flex: 1, 
-    paddingVertical: 10, 
-    alignItems: "center", 
-    borderRadius: 16 
-  },
-  segmentText: {
-    color: Colors.textSecondary,
-    fontWeight: "600",
-    fontSize: 13
-  },
-  // Game Selector Styles
-  gameOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    minWidth: 120,
-    justifyContent: 'center',
-  },
-  gameOptionActive: {
-    borderColor: Colors.primary,
-    backgroundColor: 'rgba(15, 157, 88, 0.15)',
-  },
-  gameOptionText: {
-    color: Colors.textSecondary,
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  gameOptionTextActive: {
-    color: Colors.primary,
-    fontWeight: '700',
-  }
+  footerInline: { marginTop: Spacing.xl, marginBottom: Spacing.m },
+  disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
+  disabledText: { color: Colors.textMuted },
+  teamLabel: { color: Colors.textSecondary, fontSize: 12, fontWeight: "bold", marginBottom: 6, marginLeft: 6, textTransform: "uppercase", letterSpacing: 1 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
+  gridItem: { width: '50%', padding: 5 },
+  segmentTrack: { flexDirection: "row", backgroundColor: Colors.surfaceLight, borderRadius: 18, padding: 2 },
+  segmentBtn: { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 16 },
+  segmentText: { color: Colors.textSecondary, fontWeight: "600", fontSize: 13 },
+  gameOption: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 4, borderRadius: 12, backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border, justifyContent: 'center' },
+  gameOptionActive: { borderColor: Colors.primary, backgroundColor: 'rgba(15, 157, 88, 0.15)' },
+  gameOptionText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 14 },
+  gameOptionTextActive: { color: Colors.primary, fontWeight: '700' }
 });

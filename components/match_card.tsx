@@ -3,24 +3,21 @@ import React from "react";
 import { Alert, Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { Colors, GlobalStyles, Spacing } from "../constants/theme";
-import { GameState } from "../services/game_storage";
+import { GameSummary } from "../constants/types";
 
 type MatchCardProps = {
-  match: GameState;
+  match: GameSummary;
   onPress: () => void;
   onDelete: () => void;
 };
 
 export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }) => {
-  // Always display "Best of X" if available, otherwise fall back to Score Limit
-  const conditionLabel = match.bestOf 
-    ? `Best of ${match.bestOf}` 
-    : (match.scoreLimit ? `Target: ${match.scoreLimit}` : '');
+  const conditionLabel = match.scoreLimit 
+    ? `Score Limit: ${match.scoreLimit}` 
+    : '';
 
-  // Helper for Score Color: Red if Danger, otherwise Default Text
   const getScoreStyle = (p: { isDanger: boolean }) => p.isDanger ? { color: Colors.danger } : { color: Colors.text };
 
-  // Confirmation Alert Logic
   const confirmDelete = () => {
     Alert.alert(
       "Delete Match",
@@ -32,7 +29,6 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
     );
   };
 
-  // Render the "Delete" button hidden behind the card
   const renderRightActions = (
     progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>
@@ -59,7 +55,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
   return (
     <Swipeable renderRightActions={renderRightActions}>
       <TouchableOpacity style={GlobalStyles.card} activeOpacity={0.9} onPress={onPress}>
-        {/* Header: Title + Game Condition */}
+        {/* Header */}
         <View style={GlobalStyles.rowBetween}>
           <Text style={GlobalStyles.cardTitle}>{match.title}</Text>
           <Text style={GlobalStyles.textSmall}>{conditionLabel}</Text>
@@ -67,13 +63,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
         
         {/* Timestamp */}
         <Text style={[GlobalStyles.textSmall, styles.cardTimestamp]}>
-          {match.lastPlayed}
+          {new Date(match.lastPlayed).toLocaleString()}
         </Text>
 
         {/* Content Body */}
         <View style={styles.cardInner}>
-          {/* Solo Mode View */}
           {match.mode === "solo" ? (
+            // SOLO VIEW (Leekha, etc.)
             match.players.map((p, i) => (
               <View key={i} style={GlobalStyles.rowBetween}>
                 <Text style={[styles.rowText, p.isDanger && styles.dangerText]}>
@@ -85,33 +81,46 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
               </View>
             ))
           ) : (
-            /* Team Mode View */
+            // TEAM VIEW
             <View>
               {(() => {
-                // Case 1: 2-Team Game (Tarneeb)
-                if (match.players.length === 2) {
-                   const teamA = match.players[0];
-                   const teamB = match.players[1];
-                   
-                   // Try to split names if they were combined
-                   const namesA = teamA.name.includes("&") ? teamA.name.split(" & ") : [teamA.name];
-                   const namesB = teamB.name.includes("&") ? teamB.name.split(" & ") : [teamB.name];
-                   
-                   const pA1 = namesA[0] || teamA.name;
-                   const pA2 = namesA[1] || "";
-                   const pB1 = namesB[0] || teamB.name;
-                   const pB2 = namesB[1] || "";
+                // SPECIAL CASE: TEAM SCOREBOARD
+                // If isTeamScoreboard is true, we aggregate players into a large "vs" view
+                if (match.isTeamScoreboard) {
+                   let teamA, teamB;
+                   let n1, n2, n3, n4;
+
+                   if (match.players.length === 4) {
+                      // New Format: 4 Players. Scores are synced within teams.
+                      teamA = match.players[0]; // P1 represents Team A score
+                      teamB = match.players[2]; // P3 represents Team B score
+                      
+                      n1 = match.players[0].name;
+                      n2 = match.players[1].name;
+                      n3 = match.players[2].name;
+                      n4 = match.players[3].name;
+                   } else {
+                      // Legacy Format (2 Players)
+                      teamA = match.players[0];
+                      teamB = match.players[1];
+                      
+                      const splitA = teamA.name.split(" & ");
+                      const splitB = teamB.name.split(" & ");
+                      
+                      n1 = splitA[0] || teamA.name;
+                      n2 = splitA[1];
+                      n3 = splitB[0] || teamB.name;
+                      n4 = splitB[1];
+                   }
 
                    return (
                     <View style={styles.tarneebRow}>
-                      {/* Team A Names (Left) */}
                       <View style={styles.nameColLeft}>
                          <Text style={styles.teamLabel}>Team A</Text>
-                         <Text style={styles.playerNameSmall} numberOfLines={1}>{pA1}</Text>
-                         {pA2 ? <Text style={styles.playerNameSmall} numberOfLines={1}>{pA2}</Text> : null}
+                         <Text style={styles.playerNameSmall} numberOfLines={1}>{n1}</Text>
+                         {n2 ? <Text style={styles.playerNameSmall} numberOfLines={1}>{n2}</Text> : null}
                       </View>
                       
-                      {/* Center Scores */}
                       <View style={styles.scoreCenter}>
                          <Text style={[styles.playerScoreLarge, getScoreStyle(teamA)]}>
                            {teamA.totalScore}
@@ -122,17 +131,17 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
                          </Text>
                       </View>
                       
-                      {/* Team B Names (Right) */}
                       <View style={styles.nameColRight}>
                          <Text style={styles.teamLabel}>Team B</Text>
-                         <Text style={styles.playerNameSmall} numberOfLines={1}>{pB1}</Text>
-                         {pB2 ? <Text style={styles.playerNameSmall} numberOfLines={1}>{pB2}</Text> : null}
+                         <Text style={styles.playerNameSmall} numberOfLines={1}>{n3}</Text>
+                         {n4 ? <Text style={styles.playerNameSmall} numberOfLines={1}>{n4}</Text> : null}
                       </View>
                     </View>
                    );
                 }
 
-                // Case 2: 4-Player Team Game (400, Leekha Teams)
+                // GENERIC 4-PLAYER TEAM GAME (e.g. 400)
+                // Displays individual scores in a quadrant layout
                 if (match.players.length >= 4) {
                   const pA1 = match.players[0];
                   const pB1 = match.players[1];
@@ -141,16 +150,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
 
                   return (
                     <>
-                      {/* Team Labels */}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                          <Text style={styles.teamLabel}>Team A</Text>
                          <Text style={styles.teamLabel}>Team B</Text>
                       </View>
 
-                      {/* Players & Scores Row - Centered Alignment */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        
-                        {/* Team A Column (Left) - Name | ScoreBox */}
+                        {/* Team A (Left) */}
                         <View style={{ flex: 1, marginRight: 4 }}>
                            <View style={styles.playerRow}>
                              <Text style={styles.playerNameLeft} numberOfLines={1}>{pA1.name}</Text>
@@ -158,7 +164,6 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
                                <Text style={[styles.playerScoreSmall, getScoreStyle(pA1)]}>{pA1.totalScore}</Text>
                              </View>
                            </View>
-
                            <View style={styles.playerRow}>
                              <Text style={styles.playerNameLeft} numberOfLines={1}>{pA2.name}</Text>
                              <View style={styles.scoreBox}>
@@ -167,12 +172,9 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
                            </View>
                         </View>
                         
-                        {/* VS Divider */}
-                        <Text style={[styles.rowText, { fontSize: 12, color: Colors.textMuted, marginHorizontal: 4 }]}>
-                           vs 
-                        </Text>
+                        <Text style={[styles.rowText, { fontSize: 12, color: Colors.textMuted, marginHorizontal: 4 }]}>vs</Text>
                         
-                        {/* Team B Column (Right) - ScoreBox | Name */}
+                        {/* Team B (Right) */}
                         <View style={{ flex: 1, marginLeft: 4, alignItems: 'flex-end' }}>
                            <View style={styles.playerRow}>
                              <View style={styles.scoreBox}>
@@ -180,7 +182,6 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
                              </View>
                              <Text style={styles.playerNameRight} numberOfLines={1}>{pB1.name}</Text>
                            </View>
-
                            <View style={styles.playerRow}>
                              <View style={styles.scoreBox}>
                                 <Text style={[styles.playerScoreSmall, getScoreStyle(pB2)]}>{pB2.totalScore}</Text>
@@ -254,7 +255,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 2,
   },
-  // Fixed width box ensures scores stack perfectly vertically
   scoreBox: {
     width: 40, 
     alignItems: 'center',
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: Colors.text,
   },
-  // Tarneeb Specific Layout
+  // Tarneeb Specific
   tarneebRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -289,15 +289,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 100,
+    minWidth: 80,
+    gap: 8,
   },
   vsText: {
     fontSize: 12,
     color: Colors.textMuted,
-    marginHorizontal: 8,
     fontWeight: '600',
   },
-  // Swipe Actions
   deleteButtonContainer: {
     justifyContent: 'center',
     alignItems: 'center',

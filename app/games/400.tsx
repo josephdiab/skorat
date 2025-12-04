@@ -14,14 +14,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-import { GameState, GameStorage, Player, RoundHistory } from "../../services/game_storage";
+import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
+import { GameStorage } from "../../services/game_storage";
 
 // --- 400 Game Logic Helpers ---
-
 const calculatePoints = (bid: number) => {
   if (bid >= 7) return bid * 3;
   if (bid >= 5) return bid * 2; 
-  return bid; // 2-4
+  return bid; 
 };
 
 const getMinBidForPlayer = (score: number) => {
@@ -30,8 +30,6 @@ const getMinBidForPlayer = (score: number) => {
   return 2;
 };
 
-// --- Component ---
-
 export default function FourHundredScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -39,6 +37,7 @@ export default function FourHundredScreen() {
   
   // --- State ---
   const [isLoaded, setIsLoaded] = useState(false);
+  const [gameId, setGameId] = useState<string>("");
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
@@ -48,7 +47,7 @@ export default function FourHundredScreen() {
   // Game Config
   const [mode, setMode] = useState<'solo' | 'teams'>('teams');
   const [gameName, setGameName] = useState("400");
-  const [bestOf, setBestOf] = useState(41);
+  const [scoreLimit, setScoreLimit] = useState(41); 
   
   // 400 Specific State
   const [phase, setPhase] = useState<'bidding' | 'scoring' | 'gameover'>('bidding');
@@ -69,32 +68,43 @@ export default function FourHundredScreen() {
       if (instanceId) {
         const savedGame = await GameStorage.get(instanceId);
         if (savedGame) {
+          setGameId(savedGame.id);
           setPlayers(savedGame.players);
           setHistory(savedGame.history);
-          setRoundNum(savedGame.roundNum);
+          setRoundNum(savedGame.history.length + 1);
           setMode(savedGame.mode);
           setGameName(savedGame.title);
-          setBestOf(savedGame.bestOf || 41);
+          // Load scoreLimit
+          setScoreLimit(savedGame.scoreLimit || 41);
           setIsLoaded(true);
-          // Initialize bids for next round if needed
           return;
         }
       }
 
       // 2. If new game, initialize
-      if (typeof params.playerNames === 'string') {
+      if (params.playerProfiles) {
         try {
-          let names = JSON.parse(params.playerNames);
-          if (params.mode === 'teams' && names.length === 4) {
-            names = [names[0], names[2], names[1], names[3]];
+          const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
+          
+          let orderedProfiles = profiles;
+          if (params.mode === 'teams' && profiles.length === 4) {
+            orderedProfiles = [profiles[0], profiles[2], profiles[1], profiles[3]];
           }
-          const initialPlayers = names.map((name: string, index: number) => ({
-            id: (index + 1).toString(), name, totalScore: 0, isDanger: false
+          
+          const initialPlayers: Player[] = orderedProfiles.map((p, index) => ({
+            id: (index + 1).toString(), // Game Local ID
+            profileId: p.id,            // Global ID
+            name: p.name,
+            totalScore: 0, 
+            isDanger: false
           }));
+
+          setGameId(Date.now().toString());
           setPlayers(initialPlayers);
           setMode((params.mode as 'solo' | 'teams') || 'teams');
           setGameName((params.gameName as string) || "400");
-          setBestOf(params.bestOf ? Number(params.bestOf) : 41);
+          // Parse scoreLimit from new.tsx params
+          setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 41);
           setIsLoaded(true);
         } catch (e) { console.log(e); }
       }
@@ -116,7 +126,6 @@ export default function FourHundredScreen() {
   }, [roundNum, isLoaded, players.length]);
 
   // --- Logic ---
-
   const currentTotalBids = Object.values(bids).reduce((a, b) => a + b, 0);
   
   const getTableMinTotal = () => {
@@ -131,7 +140,6 @@ export default function FourHundredScreen() {
   const isBiddingValid = currentTotalBids >= requiredTotal;
 
   // --- Handlers ---
-
   const adjustBid = (pid: string, delta: number) => {
     const p = players.find(pl => pl.id === pid);
     if (!p) return;
@@ -147,7 +155,6 @@ export default function FourHundredScreen() {
     setBids(prev => ({ ...prev, [pid]: newBid }));
   };
 
-  // -- Commit Round Logic --
   const commitRound = () => {
     const roundDetails: Record<string, any> = {};
     
@@ -170,11 +177,11 @@ export default function FourHundredScreen() {
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
     setPlayers(updatedPlayers);
 
-    // Check Win
+    // Check Win - Using scoreLimit
     for (let i = 0; i < 4; i++) {
       const p = updatedPlayers[i];
       const partner = updatedPlayers[(i + 2) % 4];
-      if (p.totalScore >= 41 && partner.totalScore >= 0) {
+      if (p.totalScore >= scoreLimit && partner.totalScore >= 0) {
         Alert.alert("Game Over!", `${p.name} and ${partner.name} Win!`);
         setPhase('gameover');
         return;
@@ -186,13 +193,11 @@ export default function FourHundredScreen() {
   };
 
   // -- Editing Logic --
-
   const startEditingRound = (index: number) => {
     const round = history[index];
     const editBids: Record<string, number> = {};
     const editResults: Record<string, boolean> = {};
 
-    // Extract historic data
     Object.keys(round.playerDetails).forEach(pid => {
       editBids[pid] = round.playerDetails[pid].bid;
       editResults[pid] = round.playerDetails[pid].passed;
@@ -222,11 +227,10 @@ export default function FourHundredScreen() {
     };
 
     // 2. Recalculate ALL Total Scores from scratch
-    // This ensures subsequent rounds (which might rely on Min Bid rules) imply correct totals
     const recalculatedPlayers = players.map(p => {
       const totalScore = newHistory.reduce((sum, round) => {
         return sum + (round.playerDetails[p.id]?.score || 0);
-      }, 0); // Start from 0
+      }, 0); 
 
       return {
         ...p,
@@ -242,11 +246,11 @@ export default function FourHundredScreen() {
 
   // --- Persistence ---
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || !gameId) return;
 
     const gameState: GameState = {
-      id: instanceId,
-      instanceId,
+      id: gameId,
+      instanceId: gameId,
       gameType: '400',
       status: 'active',
       mode: 'teams',
@@ -255,25 +259,22 @@ export default function FourHundredScreen() {
       lastPlayed: new Date().toISOString(),
       players,
       history,
-      roundNum,
-      bestOf,
+      scoreLimit: scoreLimit,
       isTeamScoreboard: false
     };
     GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded]);
+  }, [players, history, roundNum, isLoaded, gameId]);
 
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
-
       <GameHeader 
         title={gameName.toUpperCase()} 
-        subtitle={`BEST OF ${bestOf}`} 
+        subtitle={`Score Limit: ${scoreLimit}`} // Updated Header Subtitle
         onBack={() => router.dismissAll()} 
       />
-      
       <ScoreboardHistory 
         players={players}
         history={history}
@@ -281,8 +282,6 @@ export default function FourHundredScreen() {
         toggleExpand={() => setIsExpanded(!isExpanded)}
         onEditRound={startEditingRound}
       />
-
-      {/* --- Fixed Status Bar --- */}
       <View style={styles.statusRowFixed}>
         {phase === 'bidding' ? (
           <>
@@ -300,8 +299,6 @@ export default function FourHundredScreen() {
           </>
         )}
       </View>
-
-      {/* --- Main Content --- */}
       <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: Spacing.l, paddingBottom: 100, paddingTop: Spacing.xl }}>
           {phase === 'bidding' ? (
@@ -330,8 +327,6 @@ export default function FourHundredScreen() {
           )}
         </ScrollView>
       </View>
-
-      {/* --- Footer --- */}
       <View style={styles.footer}>
         {phase === 'bidding' ? (
           <TouchableOpacity 
@@ -349,8 +344,6 @@ export default function FourHundredScreen() {
           </TouchableOpacity>
         )}
       </View>
-
-      {/* --- Edit Modal --- */}
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
            <View style={styles.modalOverlay}>
@@ -364,7 +357,6 @@ export default function FourHundredScreen() {
                      return (
                         <View key={p.id} style={styles.editRow}>
                            <Text style={styles.editName}>{p.name}</Text>
-                           {/* Bid Adjuster */}
                            <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
                               <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.max(2, bid-1)}}) : null)}>
                                  <Text style={styles.editBtn}>-</Text>
@@ -374,7 +366,6 @@ export default function FourHundredScreen() {
                                  <Text style={styles.editBtn}>+</Text>
                               </TouchableOpacity>
                            </View>
-                           {/* Pass/Fail Toggle */}
                            <TouchableOpacity 
                               style={[styles.editToggle, passed ? styles.wonActive : styles.brokeActive]}
                               onPress={() => setEditingRound(prev => prev ? ({...prev, results: {...prev.results, [p.id]: !passed}}) : null)}
