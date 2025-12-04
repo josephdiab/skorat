@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Check, Crown, X } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
@@ -14,12 +14,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-import { GameState, GameStorage, Player, RoundHistory } from "../../services/game_storage";
+import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
+import { GameStorage } from "../../services/game_storage";
 
-// --- Types ---
 type Phase = 'bidding' | 'scoring';
-
-// --- Component ---
 
 export default function TarneebScreen() {
   const router = useRouter();
@@ -28,25 +26,22 @@ export default function TarneebScreen() {
 
   // --- State ---
   const [isLoaded, setIsLoaded] = useState(false);
+  const [gameId, setGameId] = useState<string>("");
 
-  // Default Empty State
-  const [teams, setTeams] = useState<Player[]>([]);
+  // Store 4 players (1,2 = Team A; 3,4 = Team B)
+  const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundNum, setRoundNum] = useState(1);
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // Config
   const [gameName, setGameName] = useState("TARNEEB");
   const [scoreLimit, setScoreLimit] = useState(31);
-  const [bestOf, setBestOf] = useState(3);
   
-  // Tarneeb Specific State
   const [phase, setPhase] = useState<Phase>('bidding');
   const [callingTeam, setCallingTeam] = useState<'A' | 'B' | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(7);
   const [tricksTaken, setTricksTaken] = useState<number>(7);
 
-  // Edit Mode State
   const [editingRound, setEditingRound] = useState<{
     index: number;
     callingTeam: 'A' | 'B';
@@ -54,8 +49,44 @@ export default function TarneebScreen() {
     tricksTaken: number;
   } | null>(null);
 
-  // Helper for Team Names (for UI display)
-  const [teamNames, setTeamNames] = useState({ A: "Team A", B: "Team B" });
+  // Helper for Team Names (Computed from players)
+  const teamAName = players.length >= 2 ? `${players[0].name.split(' ')[0]} & ${players[1].name.split(' ')[0]}` : "Team A";
+  const teamBName = players.length >= 4 ? `${players[2].name.split(' ')[0]} & ${players[3].name.split(' ')[0]}` : "Team B";
+  const teamNames = { A: teamAName, B: teamBName };
+
+  // --- VIEW MODEL FOR SCOREBOARD (Transform 4 players -> 2 Teams) ---
+  const scoreboardPlayers = useMemo(() => {
+    if (players.length < 4) return [];
+    // Team A Score = Player 1 Score (they are synced)
+    // Team B Score = Player 3 Score (they are synced)
+    return [
+      { 
+        id: 'A', 
+        name: teamAName, 
+        totalScore: players[0].totalScore, 
+        isDanger: players[0].isDanger,
+        profileId: 'team-a' 
+      },
+      { 
+        id: 'B', 
+        name: teamBName, 
+        totalScore: players[2].totalScore, 
+        isDanger: players[2].isDanger,
+        profileId: 'team-b'
+      }
+    ];
+  }, [players, teamAName, teamBName]);
+
+  const scoreboardHistory = useMemo(() => {
+    return history.map(h => ({
+      roundNum: h.roundNum,
+      // Map '1' (P1) to 'A', '3' (P3) to 'B'
+      playerDetails: {
+        'A': h.playerDetails['1'] || {},
+        'B': h.playerDetails['3'] || {}
+      }
+    }));
+  }, [history]);
 
   // --- LOAD DATA ---
   useEffect(() => {
@@ -64,45 +95,35 @@ export default function TarneebScreen() {
       if (instanceId) {
         const savedGame = await GameStorage.get(instanceId);
         if (savedGame) {
-          setTeams(savedGame.players);
+          setGameId(savedGame.id);
+          setPlayers(savedGame.players);
           setHistory(savedGame.history);
-          setRoundNum(savedGame.roundNum);
+          setRoundNum(savedGame.history.length + 1);
           setGameName(savedGame.title);
           setScoreLimit(savedGame.scoreLimit || 31);
-          setBestOf(savedGame.bestOf || 3);
-          
-          // Restore names for UI buttons
-          const namesA = savedGame.players[0].name.includes("&") ? savedGame.players[0].name : "Team A";
-          const namesB = savedGame.players[1].name.includes("&") ? savedGame.players[1].name : "Team B";
-          setTeamNames({ A: namesA, B: namesB });
-          
           setIsLoaded(true);
           return;
         }
       }
 
       // 2. Initialize New Game
-      if (typeof params.playerNames === 'string') {
+      if (params.playerProfiles) {
         try {
-          const names = JSON.parse(params.playerNames);
-          let teamAName = "Team A";
-          let teamBName = "Team B";
+          const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
           
-          if (names.length === 4) {
-            teamAName = `${names[0]} & ${names[1]}`;
-            teamBName = `${names[2]} & ${names[3]}`;
-          }
+          // Save as 4 distinct players
+          const initialPlayers: Player[] = profiles.map((p, i) => ({
+            id: (i + 1).toString(), // IDs: 1, 2, 3, 4
+            profileId: p.id,
+            name: p.name,
+            totalScore: 0,
+            isDanger: false
+          }));
           
-          setTeamNames({ A: teamAName, B: teamBName });
-          
-          setTeams([
-            { id: 'A', name: teamAName, totalScore: 0, isDanger: false, isLeader: false },
-            { id: 'B', name: teamBName, totalScore: 0, isDanger: false, isLeader: false },
-          ]);
-          
+          setGameId(Date.now().toString());
+          setPlayers(initialPlayers);
           setGameName((params.gameName as string) || "TARNEEB");
           setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 31);
-          setBestOf(params.bestOf ? Number(params.bestOf) : 3);
           setIsLoaded(true);
         } catch (e) { console.log(e); }
       }
@@ -113,9 +134,8 @@ export default function TarneebScreen() {
   // --- Logic ---
   const isBidValid = callingTeam !== null;
 
-  // Shared logic to calculate scores for a round
   const calculateRoundScores = (caller: 'A' | 'B' | null, bid: number, tricks: number) => {
-    if (!caller) return null; // Should guard against null caller
+    if (!caller) return null; 
 
     const success = tricks >= bid;
     const callerPoints = success ? tricks : -bid;
@@ -137,31 +157,36 @@ export default function TarneebScreen() {
 
     const roundDetails: Record<string, any> = {};
     
-    const updatedTeams = teams.map(t => {
-      const pointsChange = t.id === 'A' ? result.pointsA : result.pointsB;
-      
-      // Save meta-data for editing later
-      roundDetails[t.id] = {
+    const updatedPlayers = players.map((p, index) => {
+      // Logic: Team A is index 0 & 1. Team B is index 2 & 3.
+      const isTeamA = index < 2;
+      const pointsChange = isTeamA ? result.pointsA : result.pointsB;
+      const isMyTeamCalling = (isTeamA && callingTeam === 'A') || (!isTeamA && callingTeam === 'B');
+
+      roundDetails[p.id] = {
         score: pointsChange,
-        isCaller: t.id === callingTeam,
+        isCaller: isMyTeamCalling,
         bid: bidAmount,
         tricks: tricksTaken
       };
 
-      const newTotal = t.totalScore + pointsChange;
+      const newTotal = p.totalScore + pointsChange;
       return { 
-        ...t, 
+        ...p, 
         totalScore: newTotal,
         isDanger: newTotal < 0 
       };
     });
 
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
-    setTeams(updatedTeams);
+    setPlayers(updatedPlayers);
 
-    const winner = updatedTeams.find(t => t.totalScore >= scoreLimit);
+    // Check Win
+    const winner = updatedPlayers.find(p => p.totalScore >= scoreLimit);
     if (winner) {
-      Alert.alert("Game Over!", `${winner.name} Wins!`);
+      // Find which team won
+      const winningTeam = players.indexOf(winner) < 2 ? teamAName : teamBName;
+      Alert.alert("Game Over!", `${winningTeam} Wins!`);
     } 
 
     setRoundNum(prev => prev + 1);
@@ -171,14 +196,11 @@ export default function TarneebScreen() {
     setPhase('bidding');
   };
 
-  // --- Editing Handlers ---
   const startEditingRound = (index: number) => {
     const round = history[index];
-    
-    // Cast to 'any' to access Tarneeb-specific properties (isCaller, bid, tricks)
-    // which are not present on the strict RoundDetails type.
-    const detailsA = round.playerDetails['A'] as any;
-    const detailsB = round.playerDetails['B'] as any;
+    // Check P1 (Team A) and P3 (Team B)
+    const detailsA = round.playerDetails['1'] as any; 
+    const detailsB = round.playerDetails['3'] as any;
     
     let caller: 'A' | 'B' = 'A';
     let bid = 7;
@@ -211,85 +233,84 @@ export default function TarneebScreen() {
     const newHistory = [...history];
     const roundDetails: Record<string, any> = {};
 
-    // Rebuild round details
-    roundDetails['A'] = {
-      score: result.pointsA,
-      isCaller: editingRound.callingTeam === 'A',
-      bid: editingRound.bidAmount,
-      tricks: editingRound.tricksTaken
-    };
-    roundDetails['B'] = {
-      score: result.pointsB,
-      isCaller: editingRound.callingTeam === 'B',
-      bid: editingRound.bidAmount,
-      tricks: editingRound.tricksTaken
-    };
+    // Reconstruct history for all 4 players
+    players.forEach((p, index) => {
+      const isTeamA = index < 2;
+      const pointsChange = isTeamA ? result.pointsA : result.pointsB;
+      const isMyTeamCalling = (isTeamA && editingRound.callingTeam === 'A') || (!isTeamA && editingRound.callingTeam === 'B');
+      
+      roundDetails[p.id] = {
+        score: pointsChange,
+        isCaller: isMyTeamCalling,
+        bid: editingRound.bidAmount,
+        tricks: editingRound.tricksTaken
+      };
+    });
 
     newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
 
     // Recalculate Totals
-    const recalculatedTeams = teams.map(t => {
+    const recalculatedPlayers = players.map(p => {
       const totalScore = newHistory.reduce((sum, round) => {
-        return sum + (round.playerDetails[t.id]?.score || 0);
+        return sum + (round.playerDetails[p.id]?.score || 0);
       }, 0);
-      return { ...t, totalScore, isDanger: totalScore < 0 };
+      return { ...p, totalScore, isDanger: totalScore < 0 };
     });
 
     setHistory(newHistory);
-    setTeams(recalculatedTeams);
+    setPlayers(recalculatedPlayers);
     setEditingRound(null);
   };
 
   // --- Persistence ---
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || !gameId) return;
     const gameState: GameState = {
-      id: instanceId,
-      instanceId,
+      id: gameId,
+      instanceId: gameId,
       gameType: 'tarneeb',
       status: 'active',
       mode: 'teams',
       title: gameName, 
       roundLabel: `Round ${roundNum}`, 
       lastPlayed: new Date().toISOString(),
-      players: teams, 
+      players: players, // Saving 4 Players
       history,
-      roundNum,
       scoreLimit,
-      bestOf,
-      isTeamScoreboard: true
+      isTeamScoreboard: true 
     };
     GameStorage.save(gameState);
-  }, [teams, history, roundNum, isLoaded]);
+  }, [players, history, roundNum, isLoaded, gameId]);
 
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
-
       <GameHeader 
         title={gameName.toUpperCase()} 
-        subtitle={`BEST OF ${bestOf}`} 
+        subtitle={`Score Limit: ${scoreLimit}`} 
         onBack={() => router.dismissAll()} 
       />
       
+      {/* VISUALIZATION CHANGE: 
+        Pass the View Model (2 Teams) instead of Data Model (4 Players)
+        so the scoreboard renders large team scores.
+      */}
       <ScoreboardHistory 
-        players={teams}
-        history={history}
+        players={scoreboardPlayers}
+        history={scoreboardHistory}
         isExpanded={isExpanded}
         toggleExpand={() => setIsExpanded(!isExpanded)}
         onEditRound={startEditingRound}
       />
 
-      {/* --- Fixed Status Bar --- */}
       <View style={styles.statusRowFixed}>
         {phase === 'bidding' ? (
           <>
             <Text style={styles.phaseTitle}>Place Bids</Text>
             <View style={[styles.badge, isBidValid ? styles.badgeSuccess : styles.badgeError]}>
                 <Text style={[styles.badgeText, isBidValid ? { color: Colors.primary } : { color: Colors.danger }]}>
-                  {/* Corrected variable name here from isBiddingValid to isBidValid */}
                   Total: {isBidValid ? bidAmount : 0}
                 </Text>
             </View>
@@ -302,7 +323,6 @@ export default function TarneebScreen() {
         )}
       </View>
 
-      {/* --- Main Content --- */}
       <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: Spacing.l, paddingBottom: 120, paddingTop: Spacing.xl }}>
           
@@ -327,7 +347,6 @@ export default function TarneebScreen() {
         </ScrollView>
       </View>
 
-      {/* --- Footer --- */}
       <View style={styles.footer}>
         {phase === 'bidding' ? (
           <TouchableOpacity 
@@ -346,13 +365,11 @@ export default function TarneebScreen() {
         )}
       </View>
 
-      {/* --- Edit Modal --- */}
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
            <View style={styles.modalOverlay}>
              <View style={styles.modalContent}>
                <Text style={styles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
-               
                <ScrollView style={{ maxHeight: 400 }}>
                  <View style={{gap: 20}}>
                    <View>
@@ -364,10 +381,9 @@ export default function TarneebScreen() {
                         setBidAmount={(b: any) => setEditingRound(prev => prev ? ({...prev, bidAmount: b}) : null)}
                         setTricksTaken={() => {}} 
                         teamNames={teamNames}
-                        isModal={true} // Use Compact Mode
-                     />
+                        isModal={true}
+                      />
                    </View>
-                   
                    <View style={{borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 20}}>
                      <Text style={[styles.sectionLabel, {marginBottom: 10}]}>Result</Text>
                      <ScoringPhase 
@@ -375,12 +391,11 @@ export default function TarneebScreen() {
                         tricksTaken={editingRound.tricksTaken} 
                         setTricksTaken={(t: any) => setEditingRound(prev => prev ? ({...prev, tricksTaken: typeof t === 'function' ? t(prev.tricksTaken) : t}) : null)}
                         preview={calculateRoundScores(editingRound.callingTeam, editingRound.bidAmount, editingRound.tricksTaken)}
-                        isModal={true} // Use Compact Mode
-                     />
+                        isModal={true} 
+                      />
                    </View>
                  </View>
                </ScrollView>
-
                <View style={styles.modalFooter}>
                  <TouchableOpacity onPress={() => setEditingRound(null)} style={styles.modalCancel}>
                    <Text style={{color: Colors.textMuted}}>Cancel</Text>
@@ -409,7 +424,7 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
           style={[
             styles.playerOption, 
             callingTeam === team && styles.playerOptionActive,
-            isModal && { padding: 12, borderRadius: 12 } // Compact style
+            isModal && { padding: 12, borderRadius: 12 } 
           ]}
           onPress={() => setCallingTeam(team)}
           activeOpacity={0.8}
@@ -429,7 +444,7 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
           style={[
             styles.bidOption, 
             bidAmount === num && styles.bidOptionActive,
-            isModal && {width: 40, height: 40, borderRadius: 20} // Compact style
+            isModal && {width: 40, height: 40, borderRadius: 20} 
           ]}
           onPress={() => {
             setBidAmount(num);
@@ -486,94 +501,25 @@ const ScoringPhase = ({ callingTeam, tricksTaken, setTricksTaken, preview, isMod
 );
 
 const styles = StyleSheet.create({
-  statusRowFixed: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.l,
-    paddingVertical: Spacing.m,
-    backgroundColor: Colors.background, 
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    zIndex: 5,
-  },
+  statusRowFixed: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.l, paddingVertical: Spacing.m, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border, zIndex: 5 },
   phaseTitle: { color: Colors.text, fontSize: 18, fontWeight: 'bold' },
-  bidBadge: {
-    backgroundColor: Colors.surfaceLight,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginLeft: 12,
-  },
-  bidBadgeText: { color: Colors.text, fontSize: 14, fontWeight: 'bold' },
-  sectionLabel: {
-    color: Colors.textMuted,
-    fontSize: 12,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    marginBottom: Spacing.m,
-  },
+  sectionLabel: { color: Colors.textMuted, fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: Spacing.m },
   grid: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  playerOption: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  playerOption: { flex: 1, backgroundColor: Colors.surface, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
   playerOptionActive: { borderColor: Colors.primary, backgroundColor: 'rgba(15, 157, 88, 0.1)' },
   teamNameBig: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 4 },
   teamPlayers: { color: Colors.textMuted, fontSize: 12, textAlign: 'center' },
   bidGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-  bidOption: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: Colors.surfaceLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
+  bidOption: { width: 50, height: 50, borderRadius: 25, backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border },
   bidOptionActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   bidOptionText: { color: Colors.text, fontWeight: 'bold', fontSize: 18 },
   scoringContainer: { gap: 20 },
-  counterCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  counterLabel: {
-    color: Colors.textMuted,
-    fontSize: 14,
-    textTransform: 'uppercase',
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
+  counterCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  counterLabel: { color: Colors.textMuted, fontSize: 14, textTransform: 'uppercase', fontWeight: 'bold', marginBottom: 20 },
   counterRow: { flexDirection: 'row', alignItems: 'center', gap: 32 },
-  counterBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.surfaceLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  counterBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center' },
   counterBtnText: { color: Colors.text, fontSize: 32, marginTop: -4 },
-  counterValue: {
-    color: Colors.text,
-    fontSize: 56,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-    minWidth: 80,
-    textAlign: 'center',
-  },
+  counterValue: { color: Colors.text, fontSize: 56, fontWeight: '800', fontVariant: ['tabular-nums'], minWidth: 80, textAlign: 'center' },
   previewCard: { borderRadius: 16, padding: 16, borderWidth: 1 },
   previewSuccess: { backgroundColor: 'rgba(15, 157, 88, 0.1)', borderColor: 'rgba(15, 157, 88, 0.3)' },
   previewFail: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: 'rgba(255, 82, 82, 0.3)' },
@@ -581,33 +527,12 @@ const styles = StyleSheet.create({
   previewSub: { color: Colors.textMuted, fontSize: 14, fontWeight: '600' },
   previewSubScore: { color: Colors.text, fontSize: 18, fontWeight: 'bold' },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 12 },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: Spacing.l,
-    backgroundColor: Colors.background, 
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.l, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
   disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
-  
-  // Badge styles
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 4,
-  },
+  badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, gap: 4 },
   badgeSuccess: { backgroundColor: 'rgba(15, 157, 88, 0.1)', borderColor: Colors.primary },
   badgeError: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: Colors.danger },
   badgeText: { fontSize: 12, fontWeight: 'bold' },
-
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', padding: 10 },
   modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, paddingBottom: 30 },
   modalTitle: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },

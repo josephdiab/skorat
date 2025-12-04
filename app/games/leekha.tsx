@@ -14,7 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-import { GameStorage, Player, RoundDetails, RoundHistory } from "../../services/game_storage";
+import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
+import { GameStorage } from "../../services/game_storage";
 
 // --- Component ---
 
@@ -25,6 +26,8 @@ export default function LeekhaScreen() {
 
   // --- State ---
   const [isLoaded, setIsLoaded] = useState(false);
+  const [gameId, setGameId] = useState<string>("");
+
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundNum, setRoundNum] = useState(1);
@@ -32,10 +35,10 @@ export default function LeekhaScreen() {
   
   const [mode, setMode] = useState<'solo' | 'teams'>('solo');
   const [gameName, setGameName] = useState("LEEKHA");
-  const [scoreLimit, setScoreLimit] = useState<number | undefined>(101);
-  const [bestOf, setBestOf] = useState<number>(3); 
+  const [scoreLimit, setScoreLimit] = useState<number>(101); // Default 101, removed bestOf
 
-  const [hearts, setHearts] = useState<Record<string, number>>({ "1": 0, "2": 0, "3": 0, "4": 0 });
+  // Round Input State
+  const [hearts, setHearts] = useState<Record<string, number>>({});
   const [qsHolder, setQsHolder] = useState<string | null>(null);
   const [tenHolder, setTenHolder] = useState<string | null>(null);
 
@@ -49,41 +52,55 @@ export default function LeekhaScreen() {
   // --- LOAD DATA ---
   useEffect(() => {
     const loadGameData = async () => {
+      // 1. Resume
       if (instanceId) {
         const savedGame = await GameStorage.get(instanceId);
         if (savedGame) {
+          setGameId(savedGame.id);
           setPlayers(savedGame.players);
           setHistory(savedGame.history);
-          setRoundNum(savedGame.roundNum);
+          setRoundNum(savedGame.history.length + 1);
           setMode(savedGame.mode);
           setGameName(savedGame.title);
-          setScoreLimit(savedGame.scoreLimit);
-          setBestOf(savedGame.bestOf || 3);
+          setScoreLimit(savedGame.scoreLimit || 101);
           setIsLoaded(true);
           return;
         }
       }
 
-      if (typeof params.playerNames === 'string') {
+      // 2. New Game
+      if (params.playerProfiles) {
         try {
-          let names = JSON.parse(params.playerNames);
-          if (params.mode === 'teams' && names.length === 4) {
-            names = [names[0], names[2], names[1], names[3]];
-          }
-          const initialPlayers = names.map((name: string, index: number) => ({
-            id: (index + 1).toString(), name: name, totalScore: 0, isDanger: false
+          const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
+          
+          const initialPlayers: Player[] = profiles.map((p, i) => ({
+            id: (i + 1).toString(),
+            profileId: p.id,
+            name: p.name,
+            totalScore: 0,
+            isDanger: false
           }));
+          
+          setGameId(Date.now().toString());
           setPlayers(initialPlayers);
           setMode((params.mode as 'solo' | 'teams') || 'solo');
           setGameName((params.gameName as string) || "LEEKHA");
           setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 101);
-          setBestOf(params.bestOf ? Number(params.bestOf) : 3);
           setIsLoaded(true);
         } catch (e) { console.log("Error init new game", e); }
       }
     };
     loadGameData();
   }, [instanceId]);
+
+  // Initialize Round Inputs
+  useEffect(() => {
+    if (players.length > 0 && Object.keys(hearts).length === 0) {
+      const initial: Record<string, number> = {};
+      players.forEach(p => initial[p.id] = 0);
+      setHearts(initial);
+    }
+  }, [players]);
 
   // --- Logic ---
   const getRoundPoints = (h: number, isQS: boolean, isTen: boolean) => {
@@ -97,6 +114,8 @@ export default function LeekhaScreen() {
   const remainingHearts = 13 - totalHeartsAssigned;
   const currentRoundPoints = (pid: string) => getRoundPoints(hearts[pid] || 0, qsHolder === pid, tenHolder === pid);
   const currentTotalPoints = players.reduce((sum, p) => sum + currentRoundPoints(p.id), 0);
+  
+  // Validation: Must account for all cards (13 hearts + QS + 10)
   const isRoundValid = remainingHearts === 0 && qsHolder !== null && tenHolder !== null && currentTotalPoints === 36;
 
   // --- Handlers ---
@@ -114,7 +133,7 @@ export default function LeekhaScreen() {
   const submitRound = () => {
     if (!isRoundValid) return;
 
-    const currentRoundDetails: Record<string, RoundDetails> = {};
+    const currentRoundDetails: Record<string, any> = {};
     players.forEach(p => {
       currentRoundDetails[p.id] = {
         score: currentRoundPoints(p.id),
@@ -131,15 +150,20 @@ export default function LeekhaScreen() {
       return {
         ...p,
         totalScore: newTotal,
-        isDanger: scoreLimit ? newTotal >= (scoreLimit * 0.85) : false 
+        // Danger logic: usually nearing the limit
+        isDanger: newTotal >= (scoreLimit * 0.85) 
       };
     });
     setPlayers(updatedPlayers);
     
-    const loser = updatedPlayers.find(p => scoreLimit && p.totalScore >= scoreLimit);
+    // Check Game Over (Loss Limit)
+    const loser = updatedPlayers.find(p => p.totalScore >= scoreLimit);
     if (loser) Alert.alert("Game Over", `${loser.name} has reached the limit!`);
 
-    setHearts({ "1": 0, "2": 0, "3": 0, "4": 0 });
+    // Reset Inputs
+    const resetHearts: Record<string, number> = {};
+    players.forEach(p => resetHearts[p.id] = 0);
+    setHearts(resetHearts);
     setQsHolder(null);
     setTenHolder(null);
     setRoundNum(prev => prev + 1);
@@ -173,7 +197,11 @@ export default function LeekhaScreen() {
 
     const recalculatedPlayers = players.map(p => {
       const totalScore = newHistory.reduce((sum, round) => sum + (round.playerDetails[p.id]?.score || 0), 0);
-      return { ...p, totalScore, isDanger: scoreLimit ? totalScore >= (scoreLimit * 0.85) : false };
+      return { 
+        ...p, 
+        totalScore, 
+        isDanger: totalScore >= (scoreLimit * 0.85) 
+      };
     });
 
     setHistory(newHistory);
@@ -183,13 +211,23 @@ export default function LeekhaScreen() {
 
   // --- Persistence ---
   useEffect(() => {
-    if (!isLoaded) return;
-    GameStorage.save({
-      id: instanceId, instanceId, gameType: 'leekha', status: 'active', mode, title: gameName, 
-      roundLabel: `Round ${roundNum}`, lastPlayed: new Date().toISOString(),
-      players, history, roundNum, scoreLimit, bestOf, isTeamScoreboard: false
-    });
-  }, [players, history, roundNum, isLoaded]);
+    if (!isLoaded || !gameId) return;
+    const gameState: GameState = {
+      id: gameId,
+      instanceId,
+      gameType: 'leekha',
+      status: 'active',
+      mode,
+      title: gameName,
+      lastPlayed: new Date().toISOString(),
+      players,
+      history,
+      roundLabel: `Round ${roundNum}`,
+      scoreLimit,
+      isTeamScoreboard: false
+    };
+    GameStorage.save(gameState);
+  }, [players, history, roundNum, isLoaded, gameId]);
 
   const renderLastRoundIcons = (p: Player) => {
     if (history.length === 0) return <View style={{ height: 16 }} />;
@@ -219,12 +257,17 @@ export default function LeekhaScreen() {
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <GameHeader title={gameName.toUpperCase()} subtitle={`BEST OF ${bestOf}`} onBack={() => router.dismissAll()} />
+      <GameHeader 
+        title={gameName.toUpperCase()} 
+        subtitle={`Score Limit: ${scoreLimit}`} 
+        onBack={() => router.dismissAll()} 
+      />
       
       <ScoreboardHistory 
         players={players} history={history} 
         isExpanded={isExpanded} toggleExpand={() => setIsExpanded(!isExpanded)} 
-        renderScoreExtra={renderLastRoundIcons} onEditRound={(idx) => {
+        renderScoreExtra={renderLastRoundIcons} 
+        onEditRound={(idx) => {
            const r = history[idx];
            const h: any = {}; let qs = null; let ten = null;
            Object.keys(r.playerDetails).forEach(pid => {
@@ -238,7 +281,7 @@ export default function LeekhaScreen() {
 
       {/* Main Status Bar */}
       <View style={styles.statusRowFixed}>
-        <Text style={styles.sectionTitle}>Input Round {roundNum}</Text>
+        <Text style={styles.sectionTitle}>Round {roundNum}</Text>
         <StatusBadges remainingHearts={remainingHearts} qsHolder={qsHolder} tenHolder={tenHolder} />
       </View>
 
@@ -273,7 +316,6 @@ export default function LeekhaScreen() {
              <View style={styles.modalContent}>
                <Text style={styles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
                
-               {/* Modal Status Bar (Reused Component) */}
                <View style={styles.modalStatusRow}>
                   <StatusBadges 
                     remainingHearts={13 - Object.values(editingRound.hearts).reduce((a,b)=>a+b,0)}
@@ -299,11 +341,11 @@ export default function LeekhaScreen() {
                            </View>
                            <View style={styles.compactControls}>
                              <HeartControl 
-                                value={h}
-                                onDecrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: Math.max(0, h-1)}}) : null)}
-                                onIncrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: h+1}}) : null)}
-                                disableDec={h === 0}
-                                disableInc={heartsLeft === 0}
+                               value={h}
+                               onDecrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: Math.max(0, h-1)}}) : null)}
+                               onIncrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: h+1}}) : null)}
+                               disableDec={h === 0}
+                               disableInc={heartsLeft === 0}
                              />
                              <CardToggleButton type="QS" active={hasQS} locked={isQSLocked} onPress={() => setEditingRound(prev => prev ? ({...prev, qsHolder: hasQS ? null : p.id}) : null)} />
                              <CardToggleButton type="10D" active={hasTen} locked={isTenLocked} onPress={() => setEditingRound(prev => prev ? ({...prev, tenHolder: hasTen ? null : p.id}) : null)} style={{ marginLeft: 6 }} />
@@ -417,8 +459,6 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, paddingBottom: 30 },
   modalTitle: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   modalStatusRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 20 },
-  editRow: { marginBottom: 16 }, 
-  editName: { color: Colors.text, width: 80, fontSize: 14, fontWeight: '600' },
   modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, paddingTop: 20, borderTopWidth: 1, borderTopColor: Colors.border },
   modalCancel: { padding: 12 },
   modalSave: { backgroundColor: Colors.primary, padding: 12, borderRadius: 8 },
