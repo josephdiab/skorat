@@ -3,7 +3,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { FlatList, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ENABLE_LOGS } from "../constants/config"; // Imported Config
+import { ENABLE_LOGS } from "../constants/config";
 import { GlobalStyles, Spacing } from "../constants/theme";
 import { GameSummary } from "../constants/types";
 import { GameStorage } from "../services/game_storage";
@@ -34,7 +34,6 @@ export default function Index() {
       new Date(b.lastPlayed).getTime() - new Date(a.lastPlayed).getTime()
     );
     
-    // DEBUG LOG
     if (ENABLE_LOGS) console.log("Loaded Games:", JSON.stringify(sorted, null, 2));
 
     setGames(sorted);
@@ -85,11 +84,8 @@ export default function Index() {
         onPressProfile={() => {
           if (ENABLE_LOGS) console.log("Profile clicked");
         }}
-        onPressSettings={() => {
-          // Optional: Hidden trick to clear storage for testing
-          // GameStorage.clearAll().then(() => loadGames());
-          if (ENABLE_LOGS) console.log("Settings clicked");
-        }}
+        // Navigates to the new Settings Screen
+        onPressSettings={() => router.push("/settings")}
       />
 
       <TabBar
