@@ -1,4 +1,4 @@
-// --- START OF FILE: constants\types.ts ---
+// --- START OF FILE: constants/types.ts ---
 
 // 1. The Global "Profile" (Phonebook entry)
 export type UserProfile = {
@@ -9,31 +9,29 @@ export type UserProfile = {
 
 // 2. The Player inside a specific game
 export type Player = {
-  id: string;         // Game-context ID (e.g., "1", "2", "A", "B")
-  profileId: string;  // Link to UserProfile
-  name: string;       // Snapshot of name at game time
+  id: string;           // Game-context ID (e.g., "1", "2", "A", "B")
+  profileId: string;    // Link to UserProfile
+  name: string;         // Snapshot of name at game time
   totalScore: number;
   isDanger: boolean;
-  isLeader?: boolean; // For Tarneeb/Leekha
+  isWinner?: boolean;   // <--- NEW: Persist the win status
+  isLeader?: boolean;   // For Tarneeb/Leekha
 };
 
 // 3. History (Readable, explicit fields)
 export type RoundHistory = {
   roundNum: number;
-  // Flexible payload:
-  // 400: { "1": { bid: 5, passed: true, score: 10 } }
-  // Tarneeb: { "A": { bid: 7, tricks: 8, score: 8, isCaller: true } }
   playerDetails: Record<string, any>; 
 };
 
-// 4. The Full Game State (Saved in @skorat_game_<ID>)
+// 4. The Full Game State
 export type GameState = {
   id: string;
-  instanceId?: string; // Legacy compat
+  instanceId?: string;
   gameType: 'leekha' | 'tarneeb' | '400';
   mode: 'solo' | 'teams';
   title: string;
-  lastPlayed: string; // ISO String
+  lastPlayed: string;
   status: 'active' | 'completed';
   players: Player[];
   history: RoundHistory[]; 
@@ -42,8 +40,6 @@ export type GameState = {
   isTeamScoreboard?: boolean;
 };
 
-// 5. The Summary (Saved in @skorat_games_v1)
-// It is identical to GameState but WITHOUT the heavy 'history' array
+// 5. The Summary
 export type GameSummary = Omit<GameState, 'history'>;
-
-// --- END OF FILE: constants\types.ts ---
+// --- END OF FILE: constants/types.ts ---
