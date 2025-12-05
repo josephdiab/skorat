@@ -1,3 +1,4 @@
+import { useKeepAwake } from 'expo-keep-awake';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -50,6 +51,8 @@ const getMinBidForPlayer = (score: number) => {
 };
 
 export default function FourHundredScreen() {
+  useKeepAwake();
+  
   const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);

@@ -1,3 +1,4 @@
+import { useKeepAwake } from "expo-keep-awake";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Heart, RotateCcw } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -18,6 +19,8 @@ import { GameState, Player, RoundHistory, UserProfile } from "../../constants/ty
 import { GameStorage } from "../../services/game_storage";
 
 export default function LeekhaScreen() {
+  useKeepAwake();
+  
   const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);

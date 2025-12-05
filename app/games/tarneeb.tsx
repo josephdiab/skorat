@@ -1,3 +1,4 @@
+import { useKeepAwake } from "expo-keep-awake";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Check, Crown, RotateCcw, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -20,6 +21,8 @@ import { GameStorage } from "../../services/game_storage";
 type Phase = 'bidding' | 'scoring' | 'gameover';
 
 export default function TarneebScreen() {
+  useKeepAwake();
+  
   const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);
