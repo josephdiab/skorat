@@ -28,6 +28,9 @@ export default function NewGameScreen() {
   const selectedGame = GAMES.find(g => g.id === selectedGameId);
   const mode = selectedGame ? (selectedGame.isTeam ? "teams" : "solo") : "teams";
   
+  // Sort games alphabetically by name
+  const SORTED_GAMES = [...GAMES].sort((a, b) => a.name.localeCompare(b.name));
+
   const isFormValid = selectedGame && players.every(p => p.trim().length > 0);
 
   // Update Score Limit options when Game Type changes
@@ -142,7 +145,7 @@ export default function NewGameScreen() {
         
         <Section title="Select Game">
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            {GAMES.map((game) => {
+            {SORTED_GAMES.map((game) => {
               const isActive = game.id === selectedGameId;
               return (
                 <TouchableOpacity

@@ -18,13 +18,32 @@ import { GameState, Player, RoundHistory, UserProfile } from "../../constants/ty
 import { GameStorage } from "../../services/game_storage";
 
 // --- 400 Game Logic Helpers ---
-const calculatePoints = (bid: number) => {
-  if (bid >= 7) return bid * 3;
-  if (bid >= 5) return bid * 2; 
-  return bid; 
+
+/**
+ * Calculates points based on the bid and the player's CURRENT score.
+ * Rules:
+ * 2-4: Face value
+ * 7: 14, 8: 16, 9: 27
+ * 10-13: 40
+ * * Special Case:
+ * If Score < 30: 5 -> 10, 6 -> 12
+ * If Score >= 30: 5 -> 5, 6 -> 6
+ */
+const calculatePoints = (bid: number, currentScore: number) => {
+  if (bid >= 10) return 40;
+  if (bid === 9) return 27;
+  if (bid === 8) return 16;
+  if (bid === 7) return 14;
+
+  // Dynamic Bids (5 & 6) depend on current score
+  if (bid === 6) return currentScore >= 30 ? 6 : 12;
+  if (bid === 5) return currentScore >= 30 ? 5 : 10;
+
+  return bid;
 };
 
 const getMinBidForPlayer = (score: number) => {
+  if (score >= 50) return 5;
   if (score >= 40) return 4;
   if (score >= 30) return 3;
   return 2;
@@ -105,6 +124,7 @@ export default function FourHundredScreen() {
     loadGameData();
   }, [instanceId]);
 
+  // Initialize Bids
   useEffect(() => {
     if (!isLoaded || players.length === 0) return;
     const initialBids: Record<string, number> = {};
@@ -118,13 +138,17 @@ export default function FourHundredScreen() {
   }, [roundNum, isLoaded, players.length]);
 
   const currentTotalBids = Object.values(bids).reduce((a, b) => a + b, 0);
+  
   const getTableMinTotal = () => {
     if (players.length === 0) return 11;
     const maxScore = Math.max(...players.map(p => p.totalScore));
+    
+    if (maxScore >= 50) return 14;
     if (maxScore >= 40) return 13;
     if (maxScore >= 30) return 12;
     return 11;
   };
+
   const requiredTotal = getTableMinTotal();
   const isBiddingValid = currentTotalBids >= requiredTotal;
 
@@ -147,8 +171,10 @@ export default function FourHundredScreen() {
     let updatedPlayers = players.map(p => {
       const bid = bids[p.id];
       const passed = results[p.id];
-      const points = calculatePoints(bid);
+      // Calculate points based on score BEFORE round
+      const points = calculatePoints(bid, p.totalScore);
       const change = passed ? points : -points;
+      
       roundDetails[p.id] = { score: change, bid, passed };
       const newTotal = p.totalScore + change;
       return { ...p, totalScore: newTotal, isDanger: newTotal < 0 };
@@ -156,62 +182,64 @@ export default function FourHundredScreen() {
 
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
 
-    // 2. Check Win Condition
-    let gameEnded = false;
-    let winnerName = "";
-    let partnerName = "";
+    // 2. CHECK WIN CONDITIONS
+    const p0 = updatedPlayers[0];
+    const p1 = updatedPlayers[1];
+    const p2 = updatedPlayers[2];
+    const p3 = updatedPlayers[3];
 
-    // Loop through 4 players to check if anyone triggered a win
-    for (let i = 0; i < 4; i++) {
-      const p = updatedPlayers[i];
-      
-      // Storage is [A1, A2, B1, B2]
-      // A1(0) <-> A2(1)
-      // B1(2) <-> B2(3)
-      let partnerIndex;
-      if (i === 0) partnerIndex = 1;
-      else if (i === 1) partnerIndex = 0;
-      else if (i === 2) partnerIndex = 3;
-      else if (i === 3) partnerIndex = 2;
-      else partnerIndex = 0; 
+    // Qualification: Score >= Limit AND Partner > 0
+    const teamA_Qualified = (p0.totalScore >= scoreLimit && p1.totalScore > 0) || 
+                            (p1.totalScore >= scoreLimit && p0.totalScore > 0);
 
-      const partner = updatedPlayers[partnerIndex];
-      
-      if (p.totalScore >= scoreLimit && partner.totalScore >= 0) {
-        gameEnded = true;
-        winnerName = p.name;
-        partnerName = partner.name;
+    const teamB_Qualified = (p2.totalScore >= scoreLimit && p3.totalScore > 0) || 
+                            (p3.totalScore >= scoreLimit && p2.totalScore > 0);
 
-        // Determine Winning Team Indices
-        const isTeamA = (i === 0 || i === 1);
-        
+    // Determine Winner based on Logic
+    let winningTeam: 'A' | 'B' | null = null;
+
+    if (teamA_Qualified && !teamB_Qualified) {
+        winningTeam = 'A';
+    } else if (!teamA_Qualified && teamB_Qualified) {
+        winningTeam = 'B';
+    } else if (teamA_Qualified && teamB_Qualified) {
+        // Both Qualified - HIGHEST SCORE wins
+        const maxA = Math.max(p0.totalScore, p1.totalScore);
+        const maxB = Math.max(p2.totalScore, p3.totalScore);
+
+        if (maxA > maxB) {
+            winningTeam = 'A';
+        } else if (maxB > maxA) {
+            winningTeam = 'B';
+        } else {
+            // TIE: winningTeam remains null. 
+            // Loop continues naturally. No alerts.
+        }
+    }
+
+    if (winningTeam) {
         // Mark Winners
         updatedPlayers = updatedPlayers.map((player, idx) => {
-            const playerIsTeamA = (idx === 0 || idx === 1);
+            const isTeamA = (idx === 0 || idx === 1);
             return {
                 ...player,
-                isWinner: isTeamA === playerIsTeamA
+                isWinner: winningTeam === 'A' ? isTeamA : !isTeamA
             };
         });
 
-        break; // Stop checking
-      }
-    }
-
-    setPlayers(updatedPlayers);
-
-    if (gameEnded) {
-        Alert.alert("Game Over!", `${winnerName} and ${partnerName} Win!`);
+        setPlayers(updatedPlayers);
+        Alert.alert("Game Over!", `Team ${winningTeam} Wins!`);
         setGameStatus('completed');
         setPhase('gameover');
     } else {
+        // No Winner or Tie - Continue Game
+        setPlayers(updatedPlayers);
         setRoundNum(prev => prev + 1);
         setPhase('bidding');
     }
   };
 
   const handleRematch = () => {
-    // Keep Storage Order [A1, A2, B1, B2]
     const profileParams = players.map(p => ({ id: p.profileId, name: p.name }));
 
     router.push({
@@ -240,22 +268,45 @@ export default function FourHundredScreen() {
     if (!editingRound) return;
     const newHistory = [...history];
     const roundDetails: Record<string, any> = {};
+    
+    // 1. Update the edited round in history structure
     players.forEach(p => {
-      const bid = editingRound.bids[p.id];
-      const passed = editingRound.results[p.id];
-      const points = calculatePoints(bid);
-      const change = passed ? points : -points;
-      roundDetails[p.id] = { score: change, bid, passed };
+        const bid = editingRound.bids[p.id];
+        const passed = editingRound.results[p.id];
+        roundDetails[p.id] = { bid, passed };
     });
-    newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
-    const recalculatedPlayers = players.map(p => {
-      const totalScore = newHistory.reduce((sum, round) => {
-        return sum + (round.playerDetails[p.id]?.score || 0);
-      }, 0); 
-      return { ...p, totalScore, isDanger: totalScore < 0 };
+    
+    newHistory[editingRound.index] = { 
+        ...newHistory[editingRound.index], 
+        playerDetails: roundDetails 
+    };
+
+    // 2. Replay History to Calculate Scores accurately
+    let tempPlayers = players.map(p => ({...p, totalScore: 0}));
+
+    const finalHistory = newHistory.map(round => {
+        const calculatedDetails: Record<string, any> = {};
+        
+        tempPlayers = tempPlayers.map(p => {
+            const rData = round.playerDetails[p.id];
+            // Calculate based on score at start of round
+            const points = calculatePoints(rData.bid, p.totalScore);
+            const change = rData.passed ? points : -points;
+            
+            calculatedDetails[p.id] = { score: change, bid: rData.bid, passed: rData.passed };
+            return { ...p, totalScore: p.totalScore + change };
+        });
+
+        return { ...round, playerDetails: calculatedDetails };
     });
-    setHistory(newHistory);
-    setPlayers(recalculatedPlayers);
+
+    const finalPlayers = tempPlayers.map(p => ({
+        ...p,
+        isDanger: p.totalScore < 0
+    }));
+
+    setHistory(finalHistory);
+    setPlayers(finalPlayers);
     setEditingRound(null);
   };
 
@@ -444,7 +495,9 @@ const BiddingCard = ({ player, bid, onAdjust }: { player: Player, bid: number, o
 );
 
 const ScoringCard = ({ player, bid, passed, onSetResult }: { player: Player, bid: number, passed: boolean, onSetResult: (res: boolean) => void }) => {
-  const points = calculatePoints(bid);
+  // Pass current score to calculate points correctly
+  const points = calculatePoints(bid, player.totalScore);
+  
   return (
     <View style={styles.scoringCardCompact}>
       <View style={styles.scoringInfo}>

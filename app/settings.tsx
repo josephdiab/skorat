@@ -1,5 +1,6 @@
+// --- START OF FILE: app/settings.tsx ---
 import { useRouter } from "expo-router";
-import { Database, Info, Trash2 } from "lucide-react-native";
+import { BookOpen, ChevronRight, Database, Info, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -12,23 +13,17 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const handleClearData = () => {
-    // 1. First Authorization
     Alert.alert(
       "Clear All Data",
       "Are you sure you want to delete all match history and player profiles? This action cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Continue",
-          style: "destructive",
-          onPress: requestSecondAuth
-        }
+        { text: "Continue", style: "destructive", onPress: requestSecondAuth }
       ]
     );
   };
 
   const requestSecondAuth = () => {
-    // 2. Second Authorization (Double Check)
     Alert.alert(
       "Final Confirmation",
       "This will permanently wipe all data from the device. Are you absolutely sure?",
@@ -51,11 +46,7 @@ export default function SettingsScreen() {
       Alert.alert("Success", "All data has been cleared.", [
         { 
           text: "OK", 
-          onPress: () => {
-            // Navigate back to reset the state of the app
-            // Using dismissAll() alone ensures a clean pop to the root without conflict
-            router.dismissAll(); 
-          } 
+          onPress: () => router.dismissAll() 
         }
       ]);
     } catch (e) {
@@ -73,6 +64,27 @@ export default function SettingsScreen() {
       
       <ScrollView contentContainerStyle={styles.content}>
         
+        {/* Help Section */}
+        <Text style={styles.sectionTitle}>Help & Support</Text>
+        <View style={styles.sectionCard}>
+            <TouchableOpacity 
+                style={styles.row} 
+                onPress={() => router.push("/rules")}
+                activeOpacity={0.7}
+            >
+                <View style={styles.rowLeft}>
+                    <View style={[styles.iconBox, styles.iconBoxNeutral]}>
+                        <BookOpen size={20} color={Colors.text} />
+                    </View>
+                    <View>
+                        <Text style={styles.rowTitle}>Game Rules</Text>
+                        <Text style={styles.rowSubtitle}>Learn how to play</Text>
+                    </View>
+                </View>
+                <ChevronRight size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+        </View>
+
         {/* Data Section */}
         <Text style={styles.sectionTitle}>Storage</Text>
         <View style={styles.sectionCard}>
@@ -87,7 +99,6 @@ export default function SettingsScreen() {
                     </View>
                 </View>
                 
-                {/* Trash Can Button on Right */}
                 <TouchableOpacity 
                     style={styles.deleteIconButton} 
                     onPress={handleClearData}
@@ -177,13 +188,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  // Style for the new icon-only button
   deleteIconButton: {
     width: 40,
     height: 40,
-    borderRadius: 20, // Circular
-    backgroundColor: 'rgba(255, 82, 82, 0.1)', // Light Red Background
+    borderRadius: 20, 
+    backgroundColor: 'rgba(255, 82, 82, 0.1)', 
     alignItems: 'center',
     justifyContent: 'center',
   }
 });
+// --- END OF FILE: app/settings.tsx ---
