@@ -18,17 +18,6 @@ export default function RulesLeekhaScreen() {
       />
       
       <ScrollView contentContainerStyle={styles.content}>
-        
-        {/* Setup */}
-        <View style={styles.section}>
-            <Text style={styles.header}>Setup & Deal</Text>
-            <View style={styles.bulletList}>
-                <Text style={styles.bullet}>• Each player is dealt <Text style={styles.bold}>13 cards</Text> (one at a time).</Text>
-                <Text style={styles.bullet}>• <Text style={styles.bold}>Passing Phase:</Text> Select 3 cards to pass to the right.</Text>
-                <Text style={styles.bullet}>• The player to the <Text style={styles.bold}>dealer&apos;s right</Text> starts.</Text>
-                <Text style={styles.bullet}>• <Text style={styles.bold}>Next Dealer:</Text> Whoever collects the <Text style={styles.bold}>Q♠</Text> becomes the dealer.</Text>
-            </View>
-        </View>
 
         {/* Objective */}
         <View style={styles.section}>
@@ -38,6 +27,17 @@ export default function RulesLeekhaScreen() {
                 {"\n\n"}
                 The game is played until a player reaches <Text style={styles.bold}>101 points</Text>. That player (and their partner) loses immediately.
             </Text>
+        </View>
+
+        {/* Setup */}
+        <View style={styles.section}>
+            <Text style={styles.header}>Setup & Deal</Text>
+            <View style={styles.bulletList}>
+                <Text style={styles.bullet}>• Each player is dealt <Text style={styles.bold}>13 cards</Text> (one at a time).</Text>
+                <Text style={styles.bullet}>• <Text style={styles.bold}>Passing Phase:</Text> Select 3 cards to pass to the right.</Text>
+                <Text style={styles.bullet}>• The player to the <Text style={styles.bold}>dealer&apos;s right</Text> starts.</Text>
+                <Text style={styles.bullet}>• <Text style={styles.bold}>Next Dealer:</Text> Whoever collects the <Text style={styles.bold}>Q♠</Text> becomes the dealer.</Text>
+            </View>
         </View>
 
         {/* Scoring */}
