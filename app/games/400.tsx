@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ThumbsDown, ThumbsUp } from "lucide-react-native";
+import { RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -44,17 +44,15 @@ export default function FourHundredScreen() {
   const [roundNum, setRoundNum] = useState(1);
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // Game Config
   const [mode, setMode] = useState<'solo' | 'teams'>('teams');
   const [gameName, setGameName] = useState("400");
   const [scoreLimit, setScoreLimit] = useState(41); 
+  const [gameStatus, setGameStatus] = useState<'active' | 'completed'>('active');
   
-  // 400 Specific State
   const [phase, setPhase] = useState<'bidding' | 'scoring' | 'gameover'>('bidding');
   const [bids, setBids] = useState<Record<string, number>>({});
   const [results, setResults] = useState<Record<string, boolean>>({}); 
 
-  // Edit Mode State
   const [editingRound, setEditingRound] = useState<{
     index: number;
     bids: Record<string, number>;
@@ -64,7 +62,6 @@ export default function FourHundredScreen() {
   // --- LOAD DATA (Async) ---
   useEffect(() => {
     const loadGameData = async () => {
-      // 1. Try loading from storage
       if (instanceId) {
         const savedGame = await GameStorage.get(instanceId);
         if (savedGame) {
@@ -74,26 +71,23 @@ export default function FourHundredScreen() {
           setRoundNum(savedGame.history.length + 1);
           setMode(savedGame.mode);
           setGameName(savedGame.title);
-          // Load scoreLimit
           setScoreLimit(savedGame.scoreLimit || 41);
+          setGameStatus(savedGame.status);
+          if (savedGame.status === 'completed') setPhase('gameover');
           setIsLoaded(true);
           return;
         }
       }
 
-      // 2. If new game, initialize
+      // New Game
       if (params.playerProfiles) {
         try {
           const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
           
-          let orderedProfiles = profiles;
-          if (params.mode === 'teams' && profiles.length === 4) {
-            orderedProfiles = [profiles[0], profiles[2], profiles[1], profiles[3]];
-          }
-          
-          const initialPlayers: Player[] = orderedProfiles.map((p, index) => ({
-            id: (index + 1).toString(), // Game Local ID
-            profileId: p.id,            // Global ID
+          // Storage Order: [TeamA_1, TeamA_2, TeamB_1, TeamB_2]
+          const initialPlayers: Player[] = profiles.map((p, index) => ({
+            id: (index + 1).toString(),
+            profileId: p.id,
             name: p.name,
             totalScore: 0, 
             isDanger: false
@@ -103,7 +97,6 @@ export default function FourHundredScreen() {
           setPlayers(initialPlayers);
           setMode((params.mode as 'solo' | 'teams') || 'teams');
           setGameName((params.gameName as string) || "400");
-          // Parse scoreLimit from new.tsx params
           setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 41);
           setIsLoaded(true);
         } catch (e) { console.log(e); }
@@ -112,22 +105,19 @@ export default function FourHundredScreen() {
     loadGameData();
   }, [instanceId]);
 
-  // Initialize Round Inputs
   useEffect(() => {
     if (!isLoaded || players.length === 0) return;
     const initialBids: Record<string, number> = {};
     const initialResults: Record<string, boolean> = {};
     players.forEach(p => {
       initialBids[p.id] = getMinBidForPlayer(p.totalScore);
-      initialResults[p.id] = true; // Default to 'Won'
+      initialResults[p.id] = true;
     });
     setBids(initialBids);
     setResults(initialResults);
   }, [roundNum, isLoaded, players.length]);
 
-  // --- Logic ---
   const currentTotalBids = Object.values(bids).reduce((a, b) => a + b, 0);
-  
   const getTableMinTotal = () => {
     if (players.length === 0) return 11;
     const maxScore = Math.max(...players.map(p => p.totalScore));
@@ -135,84 +125,121 @@ export default function FourHundredScreen() {
     if (maxScore >= 30) return 12;
     return 11;
   };
-  
   const requiredTotal = getTableMinTotal();
   const isBiddingValid = currentTotalBids >= requiredTotal;
 
-  // --- Handlers ---
   const adjustBid = (pid: string, delta: number) => {
     const p = players.find(pl => pl.id === pid);
     if (!p) return;
-    
     const currentBid = bids[pid] || 2;
     const min = getMinBidForPlayer(p.totalScore);
     const max = 13;
-    
     let newBid = currentBid + delta;
     if (newBid < min) newBid = min;
     if (newBid > max) newBid = max;
-
     setBids(prev => ({ ...prev, [pid]: newBid }));
   };
 
   const commitRound = () => {
     const roundDetails: Record<string, any> = {};
     
-    const updatedPlayers = players.map(p => {
+    // 1. Update Scores
+    let updatedPlayers = players.map(p => {
       const bid = bids[p.id];
       const passed = results[p.id];
       const points = calculatePoints(bid);
       const change = passed ? points : -points;
-      
       roundDetails[p.id] = { score: change, bid, passed };
-
       const newTotal = p.totalScore + change;
-      return { 
-        ...p, 
-        totalScore: newTotal, 
-        isDanger: newTotal < 0 
-      };
+      return { ...p, totalScore: newTotal, isDanger: newTotal < 0 };
     });
 
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
-    setPlayers(updatedPlayers);
 
-    // Check Win - Using scoreLimit
+    // 2. Check Win Condition
+    let gameEnded = false;
+    let winnerName = "";
+    let partnerName = "";
+
+    // Loop through 4 players to check if anyone triggered a win
     for (let i = 0; i < 4; i++) {
       const p = updatedPlayers[i];
-      const partner = updatedPlayers[(i + 2) % 4];
+      
+      // Storage is [A1, A2, B1, B2]
+      // A1(0) <-> A2(1)
+      // B1(2) <-> B2(3)
+      let partnerIndex;
+      if (i === 0) partnerIndex = 1;
+      else if (i === 1) partnerIndex = 0;
+      else if (i === 2) partnerIndex = 3;
+      else if (i === 3) partnerIndex = 2;
+      else partnerIndex = 0; 
+
+      const partner = updatedPlayers[partnerIndex];
+      
       if (p.totalScore >= scoreLimit && partner.totalScore >= 0) {
-        Alert.alert("Game Over!", `${p.name} and ${partner.name} Win!`);
-        setPhase('gameover');
-        return;
+        gameEnded = true;
+        winnerName = p.name;
+        partnerName = partner.name;
+
+        // Determine Winning Team Indices
+        const isTeamA = (i === 0 || i === 1);
+        
+        // Mark Winners
+        updatedPlayers = updatedPlayers.map((player, idx) => {
+            const playerIsTeamA = (idx === 0 || idx === 1);
+            return {
+                ...player,
+                isWinner: isTeamA === playerIsTeamA
+            };
+        });
+
+        break; // Stop checking
       }
     }
 
-    setRoundNum(prev => prev + 1);
-    setPhase('bidding');
+    setPlayers(updatedPlayers);
+
+    if (gameEnded) {
+        Alert.alert("Game Over!", `${winnerName} and ${partnerName} Win!`);
+        setGameStatus('completed');
+        setPhase('gameover');
+    } else {
+        setRoundNum(prev => prev + 1);
+        setPhase('bidding');
+    }
   };
 
-  // -- Editing Logic --
+  const handleRematch = () => {
+    // Keep Storage Order [A1, A2, B1, B2]
+    const profileParams = players.map(p => ({ id: p.profileId, name: p.name }));
+
+    router.push({
+      pathname: "/games/400",
+      params: {
+        playerProfiles: JSON.stringify(profileParams),
+        gameName: gameName,
+        scoreLimit: scoreLimit.toString(),
+        mode: mode
+      }
+    });
+  };
+
   const startEditingRound = (index: number) => {
     const round = history[index];
     const editBids: Record<string, number> = {};
     const editResults: Record<string, boolean> = {};
-
     Object.keys(round.playerDetails).forEach(pid => {
       editBids[pid] = round.playerDetails[pid].bid;
       editResults[pid] = round.playerDetails[pid].passed;
     });
-
     setEditingRound({ index, bids: editBids, results: editResults });
   };
 
   const saveEditedRound = () => {
     if (!editingRound) return;
-
-    // 1. Update History Item
     const newHistory = [...history];
     const roundDetails: Record<string, any> = {};
-    
     players.forEach(p => {
       const bid = editingRound.bids[p.id];
       const passed = editingRound.results[p.id];
@@ -220,59 +247,50 @@ export default function FourHundredScreen() {
       const change = passed ? points : -points;
       roundDetails[p.id] = { score: change, bid, passed };
     });
-
-    newHistory[editingRound.index] = { 
-      ...newHistory[editingRound.index], 
-      playerDetails: roundDetails 
-    };
-
-    // 2. Recalculate ALL Total Scores from scratch
+    newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
     const recalculatedPlayers = players.map(p => {
       const totalScore = newHistory.reduce((sum, round) => {
         return sum + (round.playerDetails[p.id]?.score || 0);
       }, 0); 
-
-      return {
-        ...p,
-        totalScore,
-        isDanger: totalScore < 0
-      };
+      return { ...p, totalScore, isDanger: totalScore < 0 };
     });
-
     setHistory(newHistory);
     setPlayers(recalculatedPlayers);
     setEditingRound(null);
   };
 
-  // --- Persistence ---
   useEffect(() => {
     if (!isLoaded || !gameId) return;
-
     const gameState: GameState = {
       id: gameId,
       instanceId: gameId,
       gameType: '400',
-      status: 'active',
+      status: gameStatus, 
       mode: 'teams',
       title: gameName, 
       roundLabel: `Round ${roundNum}`, 
       lastPlayed: new Date().toISOString(),
       players,
       history,
-      scoreLimit: scoreLimit,
-      isTeamScoreboard: false
+      scoreLimit: scoreLimit, 
+      isTeamScoreboard: false // Triggers P1, P3, P2, P4 sort in UI
     };
     GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded, gameId]);
+  }, [players, history, roundNum, isLoaded, gameId, gameStatus]);
 
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
+
+  // UI Order: P1, P3, P2, P4
+  const orderedPlayersForUI = players.length === 4 
+    ? [players[0], players[2], players[1], players[3]]
+    : players;
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
       <GameHeader 
         title={gameName.toUpperCase()} 
-        subtitle={`Score Limit: ${scoreLimit}`} // Updated Header Subtitle
+        subtitle={gameStatus === 'completed' ? "COMPLETED" : `Score Limit: ${scoreLimit}`}
         onBack={() => router.dismissAll()} 
       />
       <ScoreboardHistory 
@@ -281,69 +299,84 @@ export default function FourHundredScreen() {
         isExpanded={isExpanded}
         toggleExpand={() => setIsExpanded(!isExpanded)}
         onEditRound={startEditingRound}
+        isTeamScoreboard={false} 
       />
-      <View style={styles.statusRowFixed}>
-        {phase === 'bidding' ? (
-          <>
-            <Text style={styles.phaseTitle}>Place Bids</Text>
-            <View style={[styles.badge, isBiddingValid ? styles.badgeSuccess : styles.badgeError]}>
-                <Text style={[styles.badgeText, isBiddingValid ? { color: Colors.primary } : { color: Colors.danger }]}>
-                  Total: {currentTotalBids} / {requiredTotal}
+      
+      {phase !== 'gameover' ? (
+        <>
+          <View style={styles.statusRowFixed}>
+            {phase === 'bidding' ? (
+              <>
+                <Text style={styles.phaseTitle}>Place Bids</Text>
+                <View style={[styles.badge, isBiddingValid ? styles.badgeSuccess : styles.badgeError]}>
+                    <Text style={[styles.badgeText, isBiddingValid ? { color: Colors.primary } : { color: Colors.danger }]}>
+                      Total: {currentTotalBids} / {requiredTotal}
+                    </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.phaseTitle}>Round Results</Text>
+                <Text style={GlobalStyles.textSmall}>Select Outcome</Text>
+              </>
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <ScrollView contentContainerStyle={{ padding: Spacing.l, paddingBottom: 100, paddingTop: Spacing.xl }}>
+              {phase === 'bidding' ? (
+                <View style={styles.biddingGrid}>
+                  {orderedPlayersForUI.map(p => (
+                    <BiddingCard 
+                      key={p.id} 
+                      player={p} 
+                      bid={bids[p.id]} 
+                      onAdjust={(delta) => adjustBid(p.id, delta)} 
+                    />
+                  ))}
+                </View>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {orderedPlayersForUI.map(p => (
+                    <ScoringCard 
+                      key={p.id} 
+                      player={p} 
+                      bid={bids[p.id]} 
+                      passed={results[p.id]} 
+                      onSetResult={(res) => setResults(prev => ({ ...prev, [p.id]: res }))} 
+                    />
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+          <View style={styles.footer}>
+            {phase === 'bidding' ? (
+              <TouchableOpacity 
+                style={[GlobalStyles.primaryButton, !isBiddingValid && styles.disabledButton]} 
+                onPress={() => setPhase('scoring')}
+                disabled={!isBiddingValid}
+              >
+                <Text style={[GlobalStyles.primaryButtonText, !isBiddingValid && { color: Colors.textMuted }]}>
+                  ENTER RESULTS
                 </Text>
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={styles.phaseTitle}>Round Results</Text>
-            <Text style={GlobalStyles.textSmall}>Select Outcome</Text>
-          </>
-        )}
-      </View>
-      <View style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ padding: Spacing.l, paddingBottom: 100, paddingTop: Spacing.xl }}>
-          {phase === 'bidding' ? (
-            <View style={styles.biddingGrid}>
-              {players.map(p => (
-                <BiddingCard 
-                  key={p.id} 
-                  player={p} 
-                  bid={bids[p.id]} 
-                  onAdjust={(delta) => adjustBid(p.id, delta)} 
-                />
-              ))}
-            </View>
-          ) : (
-            <View style={{ gap: 8 }}>
-              {players.map(p => (
-                <ScoringCard 
-                  key={p.id} 
-                  player={p} 
-                  bid={bids[p.id]} 
-                  passed={results[p.id]} 
-                  onSetResult={(res) => setResults(prev => ({ ...prev, [p.id]: res }))} 
-                />
-              ))}
-            </View>
-          )}
-        </ScrollView>
-      </View>
-      <View style={styles.footer}>
-        {phase === 'bidding' ? (
-          <TouchableOpacity 
-            style={[GlobalStyles.primaryButton, !isBiddingValid && styles.disabledButton]} 
-            onPress={() => setPhase('scoring')}
-            disabled={!isBiddingValid}
-          >
-            <Text style={[GlobalStyles.primaryButtonText, !isBiddingValid && { color: Colors.textMuted }]}>
-              ENTER RESULTS
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={GlobalStyles.primaryButton} onPress={commitRound}>
-            <Text style={GlobalStyles.primaryButtonText}>UPDATE SCOREBOARD</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={GlobalStyles.primaryButton} onPress={commitRound}>
+                <Text style={GlobalStyles.primaryButtonText}>UPDATE SCOREBOARD</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </>
+      ) : (
+        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20}}>
+           <Text style={{color: Colors.primary, fontSize: 24, fontWeight: 'bold'}}>Match Completed</Text>
+           <TouchableOpacity style={styles.rematchBtn} onPress={handleRematch}>
+              <RotateCcw size={20} color="#000" />
+              <Text style={styles.rematchText}>REMATCH</Text>
+           </TouchableOpacity>
+        </View>
+      )}
+
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
            <View style={styles.modalOverlay}>
@@ -351,7 +384,7 @@ export default function FourHundredScreen() {
                <Text style={styles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
                <ScrollView style={{ maxHeight: 400 }}>
                  <View style={{ gap: 12 }}>
-                   {players.map(p => {
+                   {orderedPlayersForUI.map(p => {
                      const bid = editingRound.bids[p.id];
                      const passed = editingRound.results[p.id];
                      return (
@@ -395,7 +428,7 @@ export default function FourHundredScreen() {
   );
 }
 
-// --- Sub-Components ---
+// --- Sub-Components (Unchanged) ---
 const BiddingCard = ({ player, bid, onAdjust }: { player: Player, bid: number, onAdjust: (d: number) => void }) => (
   <View style={styles.biddingCard}>
     <View style={{ alignItems: 'center', marginBottom: 8 }}>
@@ -433,7 +466,7 @@ const ScoringCard = ({ player, bid, passed, onSetResult }: { player: Player, bid
   );
 };
 
-// --- Styles ---
+// --- Styles (Unchanged) ---
 const styles = StyleSheet.create({
   statusRowFixed: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.l, paddingVertical: Spacing.m, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border, zIndex: 5 },
   phaseTitle: { color: Colors.text, fontSize: 18, fontWeight: 'bold' },
@@ -461,6 +494,10 @@ const styles = StyleSheet.create({
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.l, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
   disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
   
+  // Rematch Button
+  rematchBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, gap: 8 },
+  rematchText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
+
   // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20 },

@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Edit2 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   LayoutAnimation,
   Platform,
@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { Colors, GlobalStyles, Spacing } from "../constants/theme";
-import { Player, RoundHistory } from "../services/game_storage";
+import { Player, RoundHistory } from "../constants/types";
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
@@ -25,10 +25,9 @@ type ScoreboardHistoryProps = {
   history: RoundHistory[];
   isExpanded: boolean;
   toggleExpand: () => void;
-  // Optional: Render custom content (like icons) below the score
   renderScoreExtra?: (player: Player) => React.ReactNode;
-  // New: Callback when a history row is clicked in edit mode
   onEditRound?: (roundIndex: number) => void;
+  isTeamScoreboard?: boolean;
 };
 
 export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({ 
@@ -37,23 +36,36 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
   isExpanded, 
   toggleExpand,
   renderScoreExtra,
-  onEditRound
+  onEditRound,
+  isTeamScoreboard = false
 }) => {
   const [isEditing, setIsEditing] = useState(false);
 
   const handleToggle = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     toggleExpand();
-    // Reset edit mode when collapsing
     if (isExpanded) setIsEditing(false);
   };
 
-  // Custom style logic for Danger (Red) status
   const getScoreStyle = (p: Player) => {
-    if (p.isDanger) return { color: Colors.danger };  // Red for Danger
-    if (p.totalScore < 0) return { color: Colors.danger }; // Fallback for negative
+    if (p.isDanger) return { color: Colors.danger };
+    if (p.totalScore < 0) return { color: Colors.danger };
     return { color: Colors.text };
   };
+
+  // --- Display Logic ---
+  // If Team Scoreboard (Tarneeb): Keep original order (A, B)
+  // If NOT Team Scoreboard (400, Leekha): 
+  //   Input State (Fixed): [P1(A), P2(A), P3(B), P4(B)]
+  //   Output Visual:       [P1(A), P3(B), P2(A), P4(B)]
+  const orderedPlayers = useMemo(() => {
+    if (!isTeamScoreboard && players.length === 4) {
+      // 0=A1, 1=A2, 2=B1, 3=B2
+      // We want A1, B1, A2, B2 -> 0, 2, 1, 3
+      return [players[0], players[2], players[1], players[3]];
+    }
+    return players;
+  }, [players, isTeamScoreboard]);
 
   return (
     <View style={styles.scoreboardContainer}>
@@ -62,11 +74,10 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
         activeOpacity={0.95} 
         onPress={handleToggle}
       >
-         {/* Header with Edit Button (Only visible when expanded) */}
+         {/* Header with Edit Button */}
          {isExpanded && (
            <View style={[GlobalStyles.rowBetween, { marginBottom: Spacing.m }]}>
              <Text style={GlobalStyles.textSmall}>MATCH HISTORY</Text>
-             {/* Show Edit button only if there is history to edit */}
              {history.length > 0 && (
                <TouchableOpacity 
                  style={[styles.editButton, isEditing && styles.editButtonActive]}
@@ -81,9 +92,9 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
            </View>
          )}
 
-         {/* Player Names Header */}
+         {/* Player Names Header (Ordered) */}
          <View style={styles.scoreGrid}>
-            {players.map(p => (
+            {orderedPlayers.map(p => (
               <Text key={p.id} style={styles.columnHeader} numberOfLines={1}>
                 {p.name}
               </Text>
@@ -108,31 +119,27 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
                      onPress={() => onEditRound?.(index)}
                      activeOpacity={0.7}
                    >
-                      {/* Round Indicator / Edit Icon */}
-                      <View style={styles.roundNumContainer}>
-                        {isEditing ? (
-                          <Edit2 size={10} color={Colors.primary} />
-                        ) : (
-                          <Text style={styles.roundNum}>{index + 1}</Text>
-                        )}
-                      </View>
+                     <View style={styles.roundNumContainer}>
+                       {isEditing ? (
+                         <Edit2 size={10} color={Colors.primary} />
+                       ) : (
+                         <Text style={styles.roundNum}>{index + 1}</Text>
+                       )}
+                     </View>
 
-                      {players.map(p => {
-                        // Handle specific structure (Leekha) vs generic
-                        // @ts-ignore
-                        const val = h.playerDetails ? h.playerDetails[p.id]?.score : (h.scores ? h.scores[p.id] : 0);
-                        return (
-                          <Text key={p.id} style={styles.historyCell}>
-                            {val}
-                          </Text>
-                        );
-                      })}
+                     {/* Render cells in the same order as headers */}
+                     {orderedPlayers.map(p => {
+                       const val = h.playerDetails ? h.playerDetails[p.id]?.score : (h as any).scores?.[p.id] || 0;
+                       return (
+                         <Text key={p.id} style={styles.historyCell}>
+                           {val}
+                         </Text>
+                       );
+                     })}
                    </TouchableOpacity>
                  ))}
                  {history.length === 0 && (
-                   <Text style={styles.emptyText}>
-                     No rounds recorded
-                   </Text>
+                   <Text style={styles.emptyText}>No rounds recorded</Text>
                  )}
                </ScrollView>
              </View>
@@ -140,20 +147,18 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
            </View>
          )}
 
-         {/* TOTAL SCORES */}
+         {/* TOTAL SCORES (Ordered) */}
          <View style={[styles.scoreGrid, { marginTop: isExpanded ? Spacing.s : Spacing.xs }]}>
-            {players.map(p => (
+            {orderedPlayers.map(p => (
               <View key={p.id} style={styles.scoreCol}>
                 <Text style={[styles.totalScore, getScoreStyle(p)]}>
                   {p.totalScore}
                 </Text>
-                {/* Render the extra icons if the function is provided */}
                 {renderScoreExtra && renderScoreExtra(p)}
               </View>
             ))}
          </View>
 
-         {/* Expand/Collapse Indicator */}
          <View style={{ alignItems: 'center', marginTop: Spacing.s, opacity: 0.6 }}>
            {isExpanded ? (
              <ChevronUp size={20} color={Colors.textSecondary} />
@@ -224,7 +229,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   divider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.m },
-  // New Styles for Edit Functionality
   roundNumContainer: {
     position: 'absolute',
     left: 0,

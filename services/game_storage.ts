@@ -1,4 +1,4 @@
-// --- START OF FILE: services\game_storage.ts ---
+// --- START OF FILE: services/game_storage.ts ---
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ENABLE_LOGS } from '../constants/config'; // Imported Config
 import { GameState, GameSummary } from '../constants/types';
@@ -64,6 +64,20 @@ export const GameStorage = {
       // 2. Update Index (Lightweight Summary)
       await GameStorage.updateIndex(gameWithTime);
       
+      // --- LOG WINNERS (Wrapped in ENABLE_LOGS) ---
+      if (ENABLE_LOGS && game.status === 'completed') {
+        const playersLog = game.players.map(p => ({
+            name: p.name,
+            score: p.totalScore,
+            isWinner: !!p.isWinner // Directly read from the data
+        }));
+        
+        console.log("=========================================");
+        console.log(`🏆 GAME COMPLETED: ${game.title}`);
+        console.log(JSON.stringify(playersLog, null, 2));
+        console.log("=========================================");
+      }
+
     } catch (e) {
       console.error("[STORAGE ERROR] Save Failed", e);
     }
@@ -121,4 +135,4 @@ export const GameStorage = {
     }
   }
 };
-// --- END OF FILE: services\game_storage.ts ---
+// --- END OF FILE: services/game_storage.ts ---

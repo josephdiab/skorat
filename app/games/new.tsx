@@ -72,13 +72,16 @@ export default function NewGameScreen() {
     setIsSubmitting(true);
 
     try {
-      // 1. Resolve Players
-      // This calls getOrCreate, which checks memory for existing names (trimmed/lowercase)
-      const resolvedPlayers: UserProfile[] = await Promise.all(
-        players.map(async (name) => {
-          return await PlayerStorage.getOrCreate(name);
-        })
-      );
+      // 1. Resolve Players SEQUENTIALLY
+      // We CANNOT use Promise.all here because reading/writing to AsyncStorage 
+      // creates a race condition where players overwrite each other in the database.
+      // A loop ensures Player 1 is saved before Player 2 tries to read the DB.
+      const resolvedPlayers: UserProfile[] = [];
+      
+      for (const name of players) {
+        const profile = await PlayerStorage.getOrCreate(name);
+        resolvedPlayers.push(profile);
+      }
 
       // 2. Serialize for Params
       const playerParams = JSON.stringify(resolvedPlayers);
