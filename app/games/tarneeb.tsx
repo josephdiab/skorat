@@ -1,4 +1,3 @@
-import { useKeepAwake } from "expo-keep-awake";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Check, Crown, RotateCcw, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -21,8 +20,6 @@ import { GameStorage } from "../../services/game_storage";
 type Phase = 'bidding' | 'scoring' | 'gameover';
 
 export default function TarneebScreen() {
-  useKeepAwake();
-  
   const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);
@@ -164,6 +161,7 @@ export default function TarneebScreen() {
 
     const roundDetails: Record<string, any> = {};
     
+    // 1. Update Scores & FORCE RESET WINNER STATUS
     let updatedPlayers = players.map((p, index) => {
       // Index 0,1 = Team A. Index 2,3 = Team B.
       const isTeamA = index < 2;
@@ -181,17 +179,29 @@ export default function TarneebScreen() {
       return { 
         ...p, 
         totalScore: newTotal,
-        isDanger: newTotal < 0 
+        isDanger: newTotal < 0,
+        isWinner: false // <--- CRITICAL: Clear any old winner flags immediately
       };
     });
 
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
 
-    // Check Win
-    const winner = updatedPlayers.find(p => p.totalScore >= scoreLimit);
-    if (winner) {
-      const winningTeam = players.indexOf(winner) < 2 ? 'A' : 'B';
-      
+    // 2. CHECK WIN CONDITIONS DIRECTLY (Bypassing indexOf/find issues)
+    const scoreA = updatedPlayers[0].totalScore;
+    const scoreB = updatedPlayers[2].totalScore;
+
+    let winningTeam: 'A' | 'B' | null = null;
+
+    if (scoreA >= scoreLimit || scoreB >= scoreLimit) {
+        if (scoreA > scoreB && scoreA >= scoreLimit) {
+            winningTeam = 'A';
+        } else if (scoreB > scoreA && scoreB >= scoreLimit) {
+            winningTeam = 'B';
+        } 
+        // If equal, loop continues naturally (Tie)
+    }
+
+    if (winningTeam) {
       // Mark Winners
       updatedPlayers = updatedPlayers.map((p, index) => {
           const isTeamA = index < 2;
@@ -245,23 +255,76 @@ export default function TarneebScreen() {
 
   const saveEditedRound = () => {
     if (!editingRound) return;
+    
+    // 1. Calculate result
     const result = calculateRoundScores(editingRound.callingTeam, editingRound.bidAmount, editingRound.tricksTaken);
     if (!result) return;
+    
     const newHistory = [...history];
     const roundDetails: Record<string, any> = {};
+    
+    // 2. Update history
     players.forEach((p, index) => {
       const isTeamA = index < 2;
       const pointsChange = isTeamA ? result.pointsA : result.pointsB;
       const isMyTeamCalling = (isTeamA && editingRound.callingTeam === 'A') || (!isTeamA && editingRound.callingTeam === 'B');
-      roundDetails[p.id] = { score: pointsChange, isCaller: isMyTeamCalling, bid: editingRound.bidAmount, tricks: editingRound.tricksTaken };
+      
+      roundDetails[p.id] = { 
+          score: pointsChange, 
+          isCaller: isMyTeamCalling, 
+          bid: editingRound.bidAmount, 
+          tricks: editingRound.tricksTaken 
+      };
     });
+    
     newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
-    const recalculatedPlayers = players.map(p => {
-      const totalScore = newHistory.reduce((sum, round) => { return sum + (round.playerDetails[p.id]?.score || 0); }, 0);
-      return { ...p, totalScore, isDanger: totalScore < 0 };
+
+    // 3. Replay History & CLEAR WINNER STATUS
+    let recalculatedPlayers = players.map(p => {
+      const totalScore = newHistory.reduce((sum, round) => { 
+          return sum + (round.playerDetails[p.id]?.score || 0); 
+      }, 0);
+      
+      return { 
+          ...p, 
+          totalScore, 
+          isDanger: totalScore < 0,
+          isWinner: false // <--- CRITICAL: Reset winner status on edit
+      };
     });
+
+    // 4. Re-Check Winner
+    const scoreA = recalculatedPlayers[0].totalScore;
+    const scoreB = recalculatedPlayers[2].totalScore;
+    let winningTeam: 'A' | 'B' | null = null;
+    let newStatus: 'active' | 'completed' = 'active';
+
+    if (scoreA >= scoreLimit || scoreB >= scoreLimit) {
+        if (scoreA > scoreB && scoreA >= scoreLimit) {
+            winningTeam = 'A';
+        } else if (scoreB > scoreA && scoreB >= scoreLimit) {
+            winningTeam = 'B';
+        }
+    }
+
+    if (winningTeam) {
+        recalculatedPlayers = recalculatedPlayers.map((p, index) => {
+            const isTeamA = index < 2;
+            return {
+                ...p,
+                isWinner: winningTeam === 'A' ? isTeamA : !isTeamA
+            };
+        });
+        newStatus = 'completed';
+        setPhase('gameover');
+    } else {
+        setPhase('bidding');
+        newStatus = 'active';
+    }
+
     setHistory(newHistory);
     setPlayers(recalculatedPlayers);
+    setGameStatus(newStatus);
     setEditingRound(null);
   };
 
