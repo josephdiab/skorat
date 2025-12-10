@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
-import { GameStyles } from "../../constants/game_styles"; // <--- Styles Imported
+import { GameStyles } from "../../constants/game_styles";
 import { Colors, GlobalStyles } from "../../constants/theme";
 import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
 import { GameStorage } from "../../services/game_storage";
@@ -135,7 +135,7 @@ export default function LeekhaScreen() {
     }
   }, [players]);
 
-  // --- Handlers ---
+  // --- Logic ---
   const getRoundPoints = (h: number, isQS: boolean, isTen: boolean) => {
     let points = h;
     if (isQS) points += 13;
@@ -149,6 +149,7 @@ export default function LeekhaScreen() {
   const currentTotalPoints = players.reduce((sum, p) => sum + currentRoundPoints(p.id), 0);
   const isRoundValid = remainingHearts === 0 && qsHolder !== null && tenHolder !== null && currentTotalPoints === 36;
 
+  // --- Handlers ---
   const handleHeartChange = (pid: string, delta: number) => {
     const current = hearts[pid] || 0;
     const newVal = current + delta;
@@ -159,6 +160,60 @@ export default function LeekhaScreen() {
 
   const toggleQS = (pid: string) => setQsHolder(p => (p === pid ? null : (p !== null ? p : pid)));
   const toggleTen = (pid: string) => setTenHolder(p => (p === pid ? null : (p !== null ? p : pid)));
+
+  // --- HELPER: CHECK WINNER/LOSER LOGIC ---
+  const checkGameEnd = (currentPlayers: Player[]) => {
+    const maxScore = Math.max(...currentPlayers.map(p => p.totalScore));
+    let isGameOver = false;
+
+    // Only verify loser if the limit is reached
+    if (maxScore >= scoreLimit) {
+      const losers = currentPlayers.filter(p => p.totalScore === maxScore);
+
+      if (mode === 'teams' && currentPlayers.length === 4) {
+        // Check if both teams are losing (Tie at the top)
+        // Team A: indices 0,1. Team B: indices 2,3.
+        const teamALosing = losers.some(p => currentPlayers.indexOf(p) < 2);
+        const teamBLosing = losers.some(p => currentPlayers.indexOf(p) >= 2);
+
+        if (teamALosing && teamBLosing) {
+          // TIE: Both teams touched the high score limit -> Game Continues
+          isGameOver = false;
+        } else {
+          // Only one team has the max score -> Game Over
+          isGameOver = true;
+        }
+      } else {
+        // Solo Mode: Tie if multiple players share the max score
+        isGameOver = losers.length === 1;
+      }
+    }
+
+    if (isGameOver) {
+      // Mark Winners
+      if (mode === 'teams' && currentPlayers.length === 4) {
+        // Re-find the single loser team to determine winner
+        const losers = currentPlayers.filter(p => p.totalScore === maxScore);
+        const teamALost = losers.some(p => currentPlayers.indexOf(p) < 2);
+        
+        return currentPlayers.map((p, index) => {
+          const isTeamA = index < 2;
+          // If Team A lost, Team B wins
+          return { ...p, isWinner: teamALost ? !isTeamA : isTeamA };
+        });
+      } else {
+        // Solo: Winner is the one with the lowest score
+        const minScore = Math.min(...currentPlayers.map(p => p.totalScore));
+        return currentPlayers.map(p => ({
+          ...p,
+          isWinner: p.totalScore === minScore
+        }));
+      }
+    }
+
+    // Game continues: Reset winner status
+    return currentPlayers.map(p => ({ ...p, isWinner: false }));
+  };
 
   const commitRound = () => {
     if (!isRoundValid) return;
@@ -175,32 +230,26 @@ export default function LeekhaScreen() {
 
     setHistory(prev => [...prev, { roundNum, playerDetails: currentRoundDetails }]);
 
+    // 1. Update Scores
     let updatedPlayers = players.map(p => {
       const newTotal = p.totalScore + currentRoundPoints(p.id);
-      return { ...p, totalScore: newTotal, isDanger: newTotal >= (scoreLimit * 0.85) };
+      return { 
+        ...p, 
+        totalScore: newTotal,
+        isDanger: newTotal >= (scoreLimit * 0.85) 
+      };
     });
     
-    const loser = updatedPlayers.find(p => p.totalScore >= scoreLimit);
+    // 2. Determine Win/Loss
+    updatedPlayers = checkGameEnd(updatedPlayers);
     
-    if (loser) {
-      if (mode === 'teams' && updatedPlayers.length === 4) {
-          const loserIndex = updatedPlayers.findIndex(p => p.id === loser.id);
-          const isTeamALoser = loserIndex === 0 || loserIndex === 1;
-          updatedPlayers = updatedPlayers.map((p, index) => {
-              const isTeamA = index === 0 || index === 1;
-              return { ...p, isWinner: isTeamALoser ? !isTeamA : isTeamA };
-          });
-      } else {
-          const minScore = Math.min(...updatedPlayers.map(p => p.totalScore));
-          updatedPlayers = updatedPlayers.map(p => ({
-              ...p,
-              isWinner: p.totalScore === minScore
-          }));
-      }
-      setGameStatus('completed');
-    }
+    // 3. Update Status
+    const hasWinner = updatedPlayers.some(p => p.isWinner);
+    setGameStatus(hasWinner ? 'completed' : 'active');
 
     setPlayers(updatedPlayers);
+
+    // Reset Inputs
     const resetHearts: Record<string, number> = {};
     players.forEach(p => resetHearts[p.id] = 0);
     setHearts(resetHearts);
@@ -238,37 +287,32 @@ export default function LeekhaScreen() {
       const h = editingRound.hearts[p.id] || 0;
       const qs = editingRound.qsHolder === p.id;
       const ten = editingRound.tenHolder === p.id;
-      roundDetails[p.id] = { score: getRoundPoints(h, qs, ten), hearts: h, hasQS: qs, hasTen: ten };
+      roundDetails[p.id] = {
+        score: getRoundPoints(h, qs, ten),
+        hearts: h,
+        hasQS: qs,
+        hasTen: ten
+      };
     });
 
     newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
 
+    // 1. Recalculate Totals
     let recalculatedPlayers = players.map(p => {
       const totalScore = newHistory.reduce((sum, round) => sum + (round.playerDetails[p.id]?.score || 0), 0);
-      return { ...p, totalScore, isDanger: totalScore >= (scoreLimit * 0.85), isWinner: false };
+      return { 
+        ...p, 
+        totalScore, 
+        isDanger: totalScore >= (scoreLimit * 0.85)
+      };
     });
 
-    const loser = recalculatedPlayers.find(p => p.totalScore >= scoreLimit);
-    
-    if (loser) {
-      if (mode === 'teams' && recalculatedPlayers.length === 4) {
-          const loserIndex = recalculatedPlayers.findIndex(p => p.id === loser.id);
-          const isTeamALoser = loserIndex === 0 || loserIndex === 1;
-          recalculatedPlayers = recalculatedPlayers.map((p, index) => {
-              const isTeamA = index === 0 || index === 1;
-              return { ...p, isWinner: isTeamALoser ? !isTeamA : isTeamA };
-          });
-      } else {
-          const minScore = Math.min(...recalculatedPlayers.map(p => p.totalScore));
-          recalculatedPlayers = recalculatedPlayers.map(p => ({
-              ...p,
-              isWinner: p.totalScore === minScore
-          }));
-      }
-      setGameStatus('completed');
-    } else {
-      setGameStatus('active');
-    }
+    // 2. Determine Win/Loss
+    recalculatedPlayers = checkGameEnd(recalculatedPlayers);
+
+    // 3. Update Status
+    const hasWinner = recalculatedPlayers.some(p => p.isWinner);
+    setGameStatus(hasWinner ? 'completed' : 'active');
 
     setHistory(newHistory);
     setPlayers(recalculatedPlayers);
@@ -276,9 +320,11 @@ export default function LeekhaScreen() {
     setLastPlayed(new Date().toISOString()); 
   };
 
+  // --- Persistence ---
   useEffect(() => {
     if (!isLoaded || !gameId || !lastPlayed) return;
     if (isFirstLoad.current) { isFirstLoad.current = false; return; }
+    
     const gameState: GameState = {
       id: gameId,
       instanceId,
@@ -319,18 +365,23 @@ export default function LeekhaScreen() {
 
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
-  const orderedPlayersForUI = players.length === 4 ? [players[0], players[2], players[1], players[3]] : players;
+  const orderedPlayersForUI = players.length === 4 
+    ? [players[0], players[2], players[1], players[3]]
+    : players;
+
   const winners = players.filter(p => p.isWinner);
   const winnersNames = winners.length > 0 ? winners.map(p => p.name).join(' & ') : "No Winner";
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
+
       <GameHeader 
         title={gameName.toUpperCase()} 
         subtitle={gameStatus === 'completed' ? "COMPLETED" : `Score Limit: ${scoreLimit}`} 
         onBack={() => router.dismissAll()} 
       />
+      
       <ScoreboardHistory 
         players={players} history={history} 
         isExpanded={isExpanded} toggleExpand={() => setIsExpanded(!isExpanded)} 
@@ -354,6 +405,7 @@ export default function LeekhaScreen() {
             <Text style={GameStyles.sectionTitle}>Round {roundNum}</Text>
             <StatusBadges remainingHearts={remainingHearts} qsHolder={qsHolder} tenHolder={tenHolder} />
           </View>
+
           <View style={{ flex: 1 }}>
             <ScrollView contentContainerStyle={GameStyles.scrollContent}>
               {orderedPlayersForUI.map(p => (
@@ -370,6 +422,7 @@ export default function LeekhaScreen() {
               ))}
             </ScrollView>
           </View>
+
           <View style={GameStyles.footer}>
             <TouchableOpacity 
               style={[GlobalStyles.primaryButton, !isRoundValid && GameStyles.disabledButton]} 
@@ -385,6 +438,7 @@ export default function LeekhaScreen() {
         <GameOverScreen winners={winnersNames} onRematch={handleRematch} />
       )}
 
+      {/* --- Edit Modal --- */}
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
            <View style={GameStyles.modalOverlay}>
@@ -439,7 +493,7 @@ export default function LeekhaScreen() {
   );
 }
 
-// --- Sub-Components ---
+// --- Reusable Sub-Components ---
 const StatusBadges = ({ remainingHearts, qsHolder, tenHolder }: { remainingHearts: number, qsHolder: string | null, tenHolder: string | null }) => (
   <View style={GlobalStyles.row}>
     <View style={[GameStyles.badge, remainingHearts === 0 ? GameStyles.badgeNeutral : GameStyles.badgeError]}>
