@@ -1,7 +1,7 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ThumbsDown, ThumbsUp } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -47,10 +47,14 @@ export default function FourHundredScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);
+
+  // --- Refs ---
+  const isFirstLoad = useRef(true);
   
   // --- State ---
   const [isLoaded, setIsLoaded] = useState(false);
   const [gameId, setGameId] = useState<string>("");
+  const [lastPlayed, setLastPlayed] = useState<string>(""); 
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
@@ -87,6 +91,9 @@ export default function FourHundredScreen() {
           setScoreLimit(savedGame.scoreLimit || 41);
           setGameStatus(savedGame.status);
           if (savedGame.status === 'completed') setPhase('gameover');
+          
+          setLastPlayed(savedGame.lastPlayed); 
+
           setIsLoaded(true);
           return;
         }
@@ -105,11 +112,33 @@ export default function FourHundredScreen() {
             isDanger: false
           }));
 
-          setGameId(Date.now().toString());
+          const newId = Date.now().toString();
+          const now = new Date().toISOString();
+
+          setGameId(newId);
           setPlayers(initialPlayers);
           setMode((params.mode as 'solo' | 'teams') || 'teams');
           setGameName((params.gameName as string) || "400");
           setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 41);
+          setLastPlayed(now);
+
+          // Explicit Save
+          const initialGame: GameState = {
+            id: newId,
+            instanceId: newId,
+            gameType: '400',
+            status: 'active',
+            mode: (params.mode as 'solo' | 'teams') || 'teams',
+            title: (params.gameName as string) || "400",
+            roundLabel: 'Round 1',
+            lastPlayed: now,
+            players: initialPlayers,
+            history: [],
+            scoreLimit: params.scoreLimit ? Number(params.scoreLimit) : 41,
+            isTeamScoreboard: false,
+          };
+          await GameStorage.save(initialGame);
+
           setIsLoaded(true);
         } catch (e) { console.log(e); }
       }
@@ -220,6 +249,8 @@ export default function FourHundredScreen() {
         setRoundNum(prev => prev + 1);
         setPhase('bidding');
     }
+
+    setLastPlayed(new Date().toISOString()); 
   };
 
   const handleRematch = () => {
@@ -288,10 +319,21 @@ export default function FourHundredScreen() {
     setHistory(finalHistory);
     setPlayers(finalPlayers);
     setEditingRound(null);
+    setLastPlayed(new Date().toISOString()); 
   };
 
+  // --- PERSISTENCE ---
   useEffect(() => {
+    // 1. Guard: Missing data
     if (!isLoaded || !gameId) return;
+
+    // 2. Guard: First load
+    if (isFirstLoad.current) {
+        isFirstLoad.current = false;
+        return;
+    }
+
+    // 3. Save
     const gameState: GameState = {
       id: gameId,
       instanceId: gameId,
@@ -300,14 +342,14 @@ export default function FourHundredScreen() {
       mode: 'teams',
       title: gameName, 
       roundLabel: `Round ${roundNum}`, 
-      lastPlayed: new Date().toISOString(),
+      lastPlayed: lastPlayed || new Date().toISOString(),
       players,
       history,
       scoreLimit: scoreLimit, 
       isTeamScoreboard: false 
     };
     GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded, gameId, gameStatus]);
+  }, [players, history, roundNum, isLoaded, gameId, gameStatus, lastPlayed]);
 
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
@@ -520,6 +562,7 @@ const styles = StyleSheet.create({
   scorePreviewSmall: { fontSize: 11, fontWeight: 'bold', color: '#fff' },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.l, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
   disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20 },
   modalTitle: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
