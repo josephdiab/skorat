@@ -1,17 +1,19 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Check, Crown, RotateCcw, X } from "lucide-react-native";
+import { Check, Crown, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+// Local imports
 import { GameHeader } from "../../components/game_header";
+import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
@@ -23,12 +25,11 @@ export default function TarneebScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);
-
+  
   // --- State ---
   const [isLoaded, setIsLoaded] = useState(false);
   const [gameId, setGameId] = useState<string>("");
 
-  // Storage: 4 Players (0+1=Team A, 2+3=Team B)
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
   const [roundNum, setRoundNum] = useState(1);
@@ -37,8 +38,8 @@ export default function TarneebScreen() {
   const [gameName, setGameName] = useState("TARNEEB");
   const [scoreLimit, setScoreLimit] = useState(31);
   const [gameStatus, setGameStatus] = useState<'active' | 'completed'>('active');
-  
   const [phase, setPhase] = useState<Phase>('bidding');
+  
   const [callingTeam, setCallingTeam] = useState<'A' | 'B' | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(7);
   const [tricksTaken, setTricksTaken] = useState<number>(7);
@@ -59,24 +60,12 @@ export default function TarneebScreen() {
     : "Team B";
   const teamNames = { A: teamAName, B: teamBName };
 
-  // --- VIEW MODEL (Transform 4 Players -> 2 Teams for Scoreboard) ---
+  // --- VIEW MODEL ---
   const scoreboardPlayers = useMemo(() => {
     if (players.length < 4) return [];
     return [
-      { 
-        id: 'A', 
-        name: teamAName, 
-        totalScore: players[0].totalScore, 
-        isDanger: players[0].isDanger, 
-        profileId: 'team-a' 
-      },
-      { 
-        id: 'B', 
-        name: teamBName, 
-        totalScore: players[2].totalScore, 
-        isDanger: players[2].isDanger, 
-        profileId: 'team-b' 
-      }
+      { id: 'A', name: teamAName, totalScore: players[0].totalScore, isDanger: players[0].isDanger, profileId: 'team-a' },
+      { id: 'B', name: teamBName, totalScore: players[2].totalScore, isDanger: players[2].isDanger, profileId: 'team-b' }
     ];
   }, [players, teamAName, teamBName]);
 
@@ -93,7 +82,6 @@ export default function TarneebScreen() {
   // --- LOAD DATA ---
   useEffect(() => {
     const loadGameData = async () => {
-      // 1. Resume existing game
       if (instanceId) {
         const savedGame = await GameStorage.get(instanceId);
         if (savedGame) {
@@ -110,20 +98,16 @@ export default function TarneebScreen() {
         }
       }
 
-      // 2. Initialize New Game
       if (params.playerProfiles) {
         try {
           const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
-          
-          // Create 4 distinct players
           const initialPlayers: Player[] = profiles.map((p, i) => ({
-            id: (i + 1).toString(), // IDs: 1, 2, 3, 4
+            id: (i + 1).toString(),
             profileId: p.id,
             name: p.name,
             totalScore: 0,
             isDanger: false
           }));
-          
           setGameId(Date.now().toString());
           setPlayers(initialPlayers);
           setGameName((params.gameName as string) || "TARNEEB");
@@ -136,15 +120,11 @@ export default function TarneebScreen() {
   }, [instanceId]);
 
   // --- Logic ---
-  const isBidValid = callingTeam !== null;
-
   const calculateRoundScores = (caller: 'A' | 'B' | null, bid: number, tricks: number) => {
     if (!caller) return null; 
-
     const success = tricks >= bid;
     const callerPoints = success ? tricks : -bid;
     const defenderPoints = success ? 0 : (13 - tricks);
-
     return {
       pointsA: caller === 'A' ? callerPoints : defenderPoints,
       pointsB: caller === 'B' ? callerPoints : defenderPoints,
@@ -155,64 +135,39 @@ export default function TarneebScreen() {
   // --- Handlers ---
   const commitRound = () => {
     if (!callingTeam) return;
-    
     const result = calculateRoundScores(callingTeam, bidAmount, tricksTaken);
     if (!result) return;
 
     const roundDetails: Record<string, any> = {};
     
-    // 1. Update Scores & FORCE RESET WINNER STATUS
+    // Update Scores & Reset Winner
     let updatedPlayers = players.map((p, index) => {
-      // Index 0,1 = Team A. Index 2,3 = Team B.
       const isTeamA = index < 2;
       const pointsChange = isTeamA ? result.pointsA : result.pointsB;
       const isMyTeamCalling = (isTeamA && callingTeam === 'A') || (!isTeamA && callingTeam === 'B');
 
-      roundDetails[p.id] = {
-        score: pointsChange,
-        isCaller: isMyTeamCalling,
-        bid: bidAmount,
-        tricks: tricksTaken
-      };
-
+      roundDetails[p.id] = { score: pointsChange, isCaller: isMyTeamCalling, bid: bidAmount, tricks: tricksTaken };
       const newTotal = p.totalScore + pointsChange;
-      return { 
-        ...p, 
-        totalScore: newTotal,
-        isDanger: newTotal < 0,
-        isWinner: false // <--- CRITICAL: Clear any old winner flags immediately
-      };
+      return { ...p, totalScore: newTotal, isDanger: newTotal < 0, isWinner: false };
     });
 
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
 
-    // 2. CHECK WIN CONDITIONS DIRECTLY (Bypassing indexOf/find issues)
+    // Check Win
     const scoreA = updatedPlayers[0].totalScore;
     const scoreB = updatedPlayers[2].totalScore;
-
     let winningTeam: 'A' | 'B' | null = null;
 
     if (scoreA >= scoreLimit || scoreB >= scoreLimit) {
-        if (scoreA > scoreB && scoreA >= scoreLimit) {
-            winningTeam = 'A';
-        } else if (scoreB > scoreA && scoreB >= scoreLimit) {
-            winningTeam = 'B';
-        } 
-        // If equal, loop continues naturally (Tie)
+        if (scoreA > scoreB && scoreA >= scoreLimit) winningTeam = 'A';
+        else if (scoreB > scoreA && scoreB >= scoreLimit) winningTeam = 'B';
     }
 
     if (winningTeam) {
-      // Mark Winners
       updatedPlayers = updatedPlayers.map((p, index) => {
           const isTeamA = index < 2;
-          return {
-              ...p,
-              isWinner: winningTeam === 'A' ? isTeamA : !isTeamA
-          };
+          return { ...p, isWinner: winningTeam === 'A' ? isTeamA : !isTeamA };
       });
-      
-      const winningTeamName = winningTeam === 'A' ? teamAName : teamBName;
-      Alert.alert("Game Over!", `${winningTeamName} Wins!`);
       setPlayers(updatedPlayers);
       setGameStatus('completed');
       setPhase('gameover');
@@ -229,7 +184,6 @@ export default function TarneebScreen() {
 
   const handleRematch = () => {
     const profileParams = players.map(p => ({ id: p.profileId, name: p.name }));
-
     router.push({
       pathname: "/games/tarneeb",
       params: {
@@ -255,65 +209,39 @@ export default function TarneebScreen() {
 
   const saveEditedRound = () => {
     if (!editingRound) return;
-    
-    // 1. Calculate result
     const result = calculateRoundScores(editingRound.callingTeam, editingRound.bidAmount, editingRound.tricksTaken);
     if (!result) return;
     
     const newHistory = [...history];
     const roundDetails: Record<string, any> = {};
-    
-    // 2. Update history
     players.forEach((p, index) => {
       const isTeamA = index < 2;
       const pointsChange = isTeamA ? result.pointsA : result.pointsB;
       const isMyTeamCalling = (isTeamA && editingRound.callingTeam === 'A') || (!isTeamA && editingRound.callingTeam === 'B');
-      
-      roundDetails[p.id] = { 
-          score: pointsChange, 
-          isCaller: isMyTeamCalling, 
-          bid: editingRound.bidAmount, 
-          tricks: editingRound.tricksTaken 
-      };
+      roundDetails[p.id] = { score: pointsChange, isCaller: isMyTeamCalling, bid: editingRound.bidAmount, tricks: editingRound.tricksTaken };
     });
     
     newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
 
-    // 3. Replay History & CLEAR WINNER STATUS
     let recalculatedPlayers = players.map(p => {
-      const totalScore = newHistory.reduce((sum, round) => { 
-          return sum + (round.playerDetails[p.id]?.score || 0); 
-      }, 0);
-      
-      return { 
-          ...p, 
-          totalScore, 
-          isDanger: totalScore < 0,
-          isWinner: false // <--- CRITICAL: Reset winner status on edit
-      };
+      const totalScore = newHistory.reduce((sum, round) => sum + (round.playerDetails[p.id]?.score || 0), 0);
+      return { ...p, totalScore, isDanger: totalScore < 0, isWinner: false };
     });
 
-    // 4. Re-Check Winner
     const scoreA = recalculatedPlayers[0].totalScore;
     const scoreB = recalculatedPlayers[2].totalScore;
     let winningTeam: 'A' | 'B' | null = null;
     let newStatus: 'active' | 'completed' = 'active';
 
     if (scoreA >= scoreLimit || scoreB >= scoreLimit) {
-        if (scoreA > scoreB && scoreA >= scoreLimit) {
-            winningTeam = 'A';
-        } else if (scoreB > scoreA && scoreB >= scoreLimit) {
-            winningTeam = 'B';
-        }
+        if (scoreA > scoreB && scoreA >= scoreLimit) winningTeam = 'A';
+        else if (scoreB > scoreA && scoreB >= scoreLimit) winningTeam = 'B';
     }
 
     if (winningTeam) {
         recalculatedPlayers = recalculatedPlayers.map((p, index) => {
             const isTeamA = index < 2;
-            return {
-                ...p,
-                isWinner: winningTeam === 'A' ? isTeamA : !isTeamA
-            };
+            return { ...p, isWinner: winningTeam === 'A' ? isTeamA : !isTeamA };
         });
         newStatus = 'completed';
         setPhase('gameover');
@@ -339,15 +267,18 @@ export default function TarneebScreen() {
       title: gameName, 
       roundLabel: `Round ${roundNum}`, 
       lastPlayed: new Date().toISOString(),
-      players: players, // Saving 4 Players
+      players: players, 
       history,
       scoreLimit,
-      isTeamScoreboard: true // Render big team score in Match Card
+      isTeamScoreboard: true 
     };
     GameStorage.save(gameState);
   }, [players, history, roundNum, isLoaded, gameId, gameStatus]);
 
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
+
+  const winners = players.filter(p => p.isWinner);
+  const winnerText = winners.length > 0 ? `${winners.map(p => p.name).join(' & ')}` : "No Winner";
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
@@ -426,13 +357,7 @@ export default function TarneebScreen() {
           </View>
         </>
       ) : (
-        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20}}>
-           <Text style={{color: Colors.primary, fontSize: 24, fontWeight: 'bold'}}>Match Completed</Text>
-           <TouchableOpacity style={styles.rematchBtn} onPress={handleRematch}>
-              <RotateCcw size={20} color="#000" />
-              <Text style={styles.rematchText}>REMATCH</Text>
-           </TouchableOpacity>
-        </View>
+        <GameOverScreen winners={winnerText} onRematch={handleRematch} />
       )}
 
       {editingRound && (
@@ -482,8 +407,7 @@ export default function TarneebScreen() {
   );
 }
 
-// --- Sub-Components (Unchanged) ---
-
+// --- Sub-Components ---
 const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, setTricksTaken, teamNames, isModal = false }: any) => (
   <>
     <Text style={[styles.sectionLabel, isModal && {fontSize: 10, marginBottom: 4}]}>Which team is calling?</Text>
@@ -603,9 +527,6 @@ const styles = StyleSheet.create({
   badgeSuccess: { backgroundColor: 'rgba(15, 157, 88, 0.1)', borderColor: Colors.primary },
   badgeError: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: Colors.danger },
   badgeText: { fontSize: 12, fontWeight: 'bold' },
-  // Rematch Button
-  rematchBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, gap: 8 },
-  rematchText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', padding: 10 },
   modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, paddingBottom: 30 },

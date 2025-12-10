@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react-native";
+import { RotateCcw, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Alert, Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
@@ -9,9 +9,10 @@ type MatchCardProps = {
   match: GameSummary;
   onPress: () => void;
   onDelete: () => void;
+  onRematch: () => void;
 };
 
-export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }) => {
+export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete, onRematch }) => {
   const isCompleted = match.status === 'completed';
   
   const conditionLabel = isCompleted 
@@ -21,20 +22,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
   // --- Winner Logic ---
   const isWinner = (p: Player) => {
     if (!isCompleted) return false;
-    
-    // 1. PREFERRED: Check explicit flag from storage
     if (p.isWinner !== undefined) return p.isWinner;
-
-    // 2. FALLBACK: Old calculation for legacy data
-    if (match.gameType === 'leekha' && match.players.length === 4) {
-        const maxScore = Math.max(...match.players.map(pl => pl.totalScore));
-        const p0 = match.players[0]; const p1 = match.players[1];
-        const teamALost = p0.totalScore === maxScore || p1.totalScore === maxScore;
-        const isTeamA = p.id === p0.id || p.id === p1.id;
-        return teamALost ? !isTeamA : isTeamA;
-    }
-
-    // Generic Fallback
     const maxScore = Math.max(...match.players.map(pl => pl.totalScore));
     return p.totalScore === maxScore;
   };
@@ -42,29 +30,18 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
   // --- Styling ---
   const getScoreStyle = (p: Player) => {
     if (isWinner(p)) return { color: Colors.primary, fontWeight: '800' as const };
-    
-    if (isCompleted) {
-        // Grey out losers
-        return { color: Colors.textMuted, opacity: 0.5 };
-    }
-    
-    // Active Game Logic
+    if (isCompleted) return { color: Colors.textMuted, opacity: 0.5 };
     if (p.isDanger) return { color: Colors.danger };
     return { color: Colors.text };
   };
 
   const getNameStyle = (p: Player) => {
     if (isWinner(p)) return { color: Colors.primary, fontWeight: '800' as const };
-    
-    if (isCompleted) {
-        // Grey out losers
-        return { color: Colors.textMuted, opacity: 0.5 };
-    }
-    
+    if (isCompleted) return { color: Colors.textMuted, opacity: 0.5 };
     return { color: "#ccc" };
   };
 
-  // --- Actions ---
+  // --- Swipe Actions ---
   const confirmDelete = () => {
     Alert.alert(
       "Delete Match",
@@ -76,31 +53,47 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
     );
   };
 
-  const renderRightActions = (
-    progress: Animated.AnimatedInterpolation<number>,
-    dragX: Animated.AnimatedInterpolation<number>
-  ) => {
+  // Swipe Right (Red Delete)
+  const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({
       inputRange: [-80, 0],
       outputRange: [1, 0.8],
       extrapolate: 'clamp',
     });
-
     return (
-      <TouchableOpacity 
-        onPress={confirmDelete} 
-        style={styles.deleteButtonContainer}
-        activeOpacity={0.7}
-      >
-        <Animated.View style={[styles.deleteButtonContent, { transform: [{ scale }] }]}>
-          <Trash2 size={28} color={Colors.danger} />
+      <TouchableOpacity onPress={confirmDelete} style={styles.deleteButtonContainer} activeOpacity={0.7}>
+        <Animated.View style={[styles.actionContent, { transform: [{ scale }] }]}>
+          <Trash2 size={24} color={Colors.danger} />
+          <Text style={styles.actionTextDanger}>DELETE</Text>
         </Animated.View>
       </TouchableOpacity>
     );
   };
 
+  // Swipe Left (Green Rematch)
+  const renderLeftActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({
+      inputRange: [0, 80],
+      outputRange: [0.8, 1],
+      extrapolate: 'clamp',
+    });
+    
+    return (
+      <View style={styles.rematchSwipeContainer}>
+        <Animated.View style={[styles.actionContent, { transform: [{ scale }] }]}>
+          <RotateCcw size={24} color={Colors.text} />
+          <Text style={styles.actionText}>REMATCH</Text>
+        </Animated.View>
+      </View>
+    );
+  };
+
   return (
-    <Swipeable renderRightActions={renderRightActions}>
+    <Swipeable
+      renderRightActions={renderRightActions}
+      renderLeftActions={isCompleted ? renderLeftActions : undefined}
+      onSwipeableLeftOpen={isCompleted ? onRematch : undefined}
+    >
       <TouchableOpacity style={GlobalStyles.card} activeOpacity={0.9} onPress={onPress}>
         {/* Header */}
         <View style={GlobalStyles.rowBetween}>
@@ -124,225 +117,114 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete }
             // SOLO VIEW
             match.players.map((p, i) => (
               <View key={i} style={GlobalStyles.rowBetween}>
-                <Text style={[styles.rowText, getNameStyle(p)]}>
-                  {p.name}
-                </Text>
-                <Text style={[styles.rowText, getScoreStyle(p)]}>
-                  {p.totalScore}
-                </Text>
+                <Text style={[styles.rowText, getNameStyle(p)]}>{p.name}</Text>
+                <Text style={[styles.rowText, getScoreStyle(p)]}>{p.totalScore}</Text>
               </View>
             ))
           ) : (
             // TEAM VIEW
             <View>
               {(() => {
-                // SPECIAL CASE: TARNEEB (Already aggregated teams)
                 if (match.isTeamScoreboard || match.gameType === 'tarneeb') {
-                   let teamA, teamB;
-                   let n1, n2, n3, n4;
-
-                   if (match.players.length === 4) {
-                      teamA = match.players[0]; // Team A Score Object
-                      teamB = match.players[2]; // Team B Score Object
-                      
-                      n1 = match.players[0].name;
-                      n2 = match.players[1].name;
-                      n3 = match.players[2].name;
-                      n4 = match.players[3].name;
-                   } else {
-                      // Fallback
-                      teamA = match.players[0];
-                      teamB = match.players[1];
-                      n1 = teamA.name; n3 = teamB.name;
-                   }
-
+                   const teamA = match.players[0];
+                   const teamB = match.players[2]; 
                    return (
                     <View style={styles.tarneebRow}>
                       <View style={styles.nameColLeft}>
-                         <Text style={styles.teamLabel}>Team A</Text>
-                         <Text style={[styles.playerNameSmall, getNameStyle(teamA)]} numberOfLines={1}>{n1}</Text>
-                         {n2 ? <Text style={[styles.playerNameSmall, getNameStyle(teamA)]} numberOfLines={1}>{n2}</Text> : null}
+                          <Text style={styles.teamLabel}>Team A</Text>
+                          <Text style={[styles.playerNameSmall, getNameStyle(teamA)]} numberOfLines={1}>{match.players[0].name}</Text>
+                          <Text style={[styles.playerNameSmall, getNameStyle(teamA)]} numberOfLines={1}>{match.players[1]?.name}</Text>
                       </View>
-                      
                       <View style={styles.scoreCenter}>
-                         <Text style={[styles.playerScoreLarge, getScoreStyle(teamA)]}>
-                           {teamA.totalScore}
-                         </Text>
-                         <Text style={styles.vsText}>vs</Text>
-                         <Text style={[styles.playerScoreLarge, getScoreStyle(teamB)]}>
-                           {teamB.totalScore}
-                         </Text>
+                          <Text style={[styles.playerScoreLarge, getScoreStyle(teamA)]}>{teamA.totalScore}</Text>
+                          <Text style={styles.vsText}>vs</Text>
+                          <Text style={[styles.playerScoreLarge, getScoreStyle(teamB)]}>{teamB.totalScore}</Text>
                       </View>
-                      
                       <View style={styles.nameColRight}>
-                         <Text style={styles.teamLabel}>Team B</Text>
-                         <Text style={[styles.playerNameSmall, getNameStyle(teamB)]} numberOfLines={1}>{n3}</Text>
-                         {n4 ? <Text style={[styles.playerNameSmall, getNameStyle(teamB)]} numberOfLines={1}>{n4}</Text> : null}
+                          <Text style={styles.teamLabel}>Team B</Text>
+                          <Text style={[styles.playerNameSmall, getNameStyle(teamB)]} numberOfLines={1}>{match.players[2].name}</Text>
+                          <Text style={[styles.playerNameSmall, getNameStyle(teamB)]} numberOfLines={1}>{match.players[3]?.name}</Text>
                       </View>
                     </View>
                    );
                 }
-
-                // GENERIC 4-PLAYER TEAM GAME (400, Leekha)
-                // Assumes Storage: [TeamA_1, TeamA_2, TeamB_1, TeamB_2]
-                if (match.players.length >= 4) {
-                  const pA1 = match.players[0];
-                  const pA2 = match.players[1];
-                  const pB1 = match.players[2];
-                  const pB2 = match.players[3];
-
-                  return (
-                    <>
+                // Generic Team View (400, Leekha)
+                return (
+                  <>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                         <Text style={styles.teamLabel}>Team A</Text>
-                         <Text style={styles.teamLabel}>Team B</Text>
+                          <Text style={styles.teamLabel}>Team A</Text>
+                          <Text style={styles.teamLabel}>Team B</Text>
                       </View>
-
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        {/* Team A (Left) */}
                         <View style={{ flex: 1, marginRight: 4 }}>
-                           <View style={styles.playerRow}>
-                             <Text style={[styles.playerNameLeft, getNameStyle(pA1)]} numberOfLines={1}>{pA1.name}</Text>
-                             <View style={styles.scoreBox}>
-                               <Text style={[styles.playerScoreSmall, getScoreStyle(pA1)]}>{pA1.totalScore}</Text>
-                             </View>
-                           </View>
-                           <View style={styles.playerRow}>
-                             <Text style={[styles.playerNameLeft, getNameStyle(pA2)]} numberOfLines={1}>{pA2.name}</Text>
-                             <View style={styles.scoreBox}>
-                                <Text style={[styles.playerScoreSmall, getScoreStyle(pA2)]}>{pA2.totalScore}</Text>
-                             </View>
-                           </View>
+                            {[0, 1].map(i => match.players[i] && (
+                                <View key={i} style={styles.playerRow}>
+                                    <Text style={[styles.playerNameLeft, getNameStyle(match.players[i])]}>{match.players[i].name}</Text>
+                                    <View style={styles.scoreBox}><Text style={[styles.playerScoreSmall, getScoreStyle(match.players[i])]}>{match.players[i].totalScore}</Text></View>
+                                </View>
+                            ))}
                         </View>
-                        
                         <Text style={[styles.rowText, { fontSize: 12, color: Colors.textMuted, marginHorizontal: 4 }]}>vs</Text>
-                        
-                        {/* Team B (Right) */}
                         <View style={{ flex: 1, marginLeft: 4, alignItems: 'flex-end' }}>
-                           <View style={styles.playerRow}>
-                             <View style={styles.scoreBox}>
-                                <Text style={[styles.playerScoreSmall, getScoreStyle(pB1)]}>{pB1.totalScore}</Text>
-                             </View>
-                             <Text style={[styles.playerNameRight, getNameStyle(pB1)]} numberOfLines={1}>{pB1.name}</Text>
-                           </View>
-                           <View style={styles.playerRow}>
-                             <View style={styles.scoreBox}>
-                                <Text style={[styles.playerScoreSmall, getScoreStyle(pB2)]}>{pB2.totalScore}</Text>
-                             </View>
-                             <Text style={[styles.playerNameRight, getNameStyle(pB2)]} numberOfLines={1}>{pB2.name}</Text>
-                           </View>
+                            {[2, 3].map(i => match.players[i] && (
+                                <View key={i} style={styles.playerRow}>
+                                    <View style={styles.scoreBox}><Text style={[styles.playerScoreSmall, getScoreStyle(match.players[i])]}>{match.players[i].totalScore}</Text></View>
+                                    <Text style={[styles.playerNameRight, getNameStyle(match.players[i])]}>{match.players[i].name}</Text>
+                                </View>
+                            ))}
                         </View>
                       </View>
-                    </>
-                  );
-                }
-                
-                return null;
+                  </>
+                );
               })()}
             </View>
           )}
         </View>
+
+        {/* Mini indicator that swipe is available */}
+        {isCompleted && (
+           <View style={{flexDirection: 'row', justifyContent: 'center', marginTop: 12, opacity: 0.4}}>
+              <Text style={{fontSize: 10, color: Colors.textSecondary, fontStyle: 'italic'}}>
+                Swipe right to rematch
+              </Text>
+           </View>
+        )}
       </TouchableOpacity>
     </Swipeable>
   );
 };
 
 const styles = StyleSheet.create({
-  cardTimestamp: {
-    color: Colors.textMuted,
-    marginBottom: Spacing.m,
-  },
-  cardInner: {
-    backgroundColor: Colors.surfaceInner,
-    borderRadius: 8,
-    padding: Spacing.m,
-    gap: 4, 
-  },
-  rowText: {
-    fontSize: 14,
-  },
-  dangerText: {
-    color: Colors.danger,
-    fontWeight: "bold",
-  },
-  teamLabel: {
-    color: Colors.textSecondary,
-    fontSize: 10,
-    textTransform: 'uppercase',
-    fontWeight: 'bold',
-  },
-  playerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  cardTimestamp: { color: Colors.textMuted, marginBottom: Spacing.m },
+  cardInner: { backgroundColor: Colors.surfaceInner, borderRadius: 8, padding: Spacing.m, gap: 4 },
+  rowText: { fontSize: 14 },
+  teamLabel: { color: Colors.textSecondary, fontSize: 10, textTransform: 'uppercase', fontWeight: 'bold' },
+  playerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 4 },
+  playerNameLeft: { fontSize: 13, flex: 1, textAlign: 'left', marginRight: 8 },
+  playerNameRight: { fontSize: 13, flex: 1, textAlign: 'right', marginLeft: 8 },
+  playerNameSmall: { fontSize: 13, marginBottom: 2 },
+  scoreBox: { width: 40, alignItems: 'center', justifyContent: 'center' },
+  playerScoreSmall: { fontWeight: "bold", fontSize: 14, color: Colors.text, textAlign: 'center' },
+  playerScoreLarge: { fontWeight: "800", fontSize: 24, color: Colors.text },
+  tarneebRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  nameColLeft: { flex: 1, alignItems: 'flex-start' },
+  nameColRight: { flex: 1, alignItems: 'flex-end' },
+  scoreCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minWidth: 80, gap: 8 },
+  vsText: { fontSize: 12, color: Colors.textMuted, fontWeight: '600' },
+  
+  // Actions
+  deleteButtonContainer: { justifyContent: 'center', alignItems: 'center', width: 80, height: '100%', backgroundColor: 'rgba(255, 82, 82, 0.1)' },
+  
+  // UPDATED: Using the app's primary green RGB values (15, 157, 88) with 0.1 opacity
+  rematchSwipeContainer: { 
+    justifyContent: 'center', 
+    alignItems: 'center', 
     width: '100%', 
-    marginBottom: 4,
+    height: '100%', 
+    backgroundColor: 'rgba(15, 157, 88, 0.1)' 
   },
-  playerNameLeft: {
-    fontSize: 13,
-    flex: 1, 
-    textAlign: 'left',
-    marginRight: 8,
-  },
-  playerNameRight: {
-    fontSize: 13,
-    flex: 1,
-    textAlign: 'right',
-    marginLeft: 8,
-  },
-  playerNameSmall: {
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  scoreBox: {
-    width: 40, 
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playerScoreSmall: {
-    fontWeight: "bold",
-    fontSize: 14,
-    color: Colors.text,
-    textAlign: 'center',
-  },
-  playerScoreLarge: {
-    fontWeight: "800",
-    fontSize: 24,
-    color: Colors.text,
-  },
-  tarneebRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  nameColLeft: {
-    flex: 1,
-    alignItems: 'flex-start',
-  },
-  nameColRight: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  scoreCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 80,
-    gap: 8,
-  },
-  vsText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '600',
-  },
-  deleteButtonContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    height: '100%',
-  },
-  deleteButtonContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  
+  actionContent: { justifyContent: 'center', alignItems: 'center' },
+  actionText: { color: Colors.text, fontSize: 10, fontWeight: 'bold', marginTop: 4 },
+  actionTextDanger: { color: Colors.danger, fontSize: 10, fontWeight: 'bold', marginTop: 4 },
 });
