@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Check, Crown, X } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -26,9 +26,14 @@ export default function TarneebScreen() {
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);
   
+  // --- Refs ---
+  // Blocks the auto-save on initial load
+  const isFirstLoad = useRef(true);
+
   // --- State ---
   const [isLoaded, setIsLoaded] = useState(false);
   const [gameId, setGameId] = useState<string>("");
+  const [lastPlayed, setLastPlayed] = useState<string>(""); 
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
@@ -82,6 +87,7 @@ export default function TarneebScreen() {
   // --- LOAD DATA ---
   useEffect(() => {
     const loadGameData = async () => {
+      // Resume
       if (instanceId) {
         const savedGame = await GameStorage.get(instanceId);
         if (savedGame) {
@@ -93,14 +99,19 @@ export default function TarneebScreen() {
           setScoreLimit(savedGame.scoreLimit || 31);
           setGameStatus(savedGame.status);
           if (savedGame.status === 'completed') setPhase('gameover');
+          
+          setLastPlayed(savedGame.lastPlayed); 
+
           setIsLoaded(true);
           return;
         }
       }
 
+      // New Game
       if (params.playerProfiles) {
         try {
           const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
+          
           const initialPlayers: Player[] = profiles.map((p, i) => ({
             id: (i + 1).toString(),
             profileId: p.id,
@@ -108,10 +119,33 @@ export default function TarneebScreen() {
             totalScore: 0,
             isDanger: false
           }));
-          setGameId(Date.now().toString());
+          
+          const newId = Date.now().toString();
+          const now = new Date().toISOString();
+
+          setGameId(newId);
           setPlayers(initialPlayers);
           setGameName((params.gameName as string) || "TARNEEB");
           setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 31);
+          setLastPlayed(now);
+
+          // Force save only on creation
+          const initialGame: GameState = {
+            id: newId,
+            instanceId: newId,
+            gameType: 'tarneeb',
+            status: 'active',
+            mode: 'teams',
+            title: (params.gameName as string) || "TARNEEB",
+            roundLabel: 'Round 1',
+            lastPlayed: now,
+            players: initialPlayers,
+            history: [],
+            scoreLimit: params.scoreLimit ? Number(params.scoreLimit) : 31,
+            isTeamScoreboard: true,
+          };
+          await GameStorage.save(initialGame);
+
           setIsLoaded(true);
         } catch (e) { console.log(e); }
       }
@@ -171,15 +205,16 @@ export default function TarneebScreen() {
       setPlayers(updatedPlayers);
       setGameStatus('completed');
       setPhase('gameover');
-      return;
-    } 
+    } else {
+        setPlayers(updatedPlayers);
+        setRoundNum(prev => prev + 1);
+        setCallingTeam(null);
+        setBidAmount(7);
+        setTricksTaken(7);
+        setPhase('bidding');
+    }
 
-    setPlayers(updatedPlayers);
-    setRoundNum(prev => prev + 1);
-    setCallingTeam(null);
-    setBidAmount(7);
-    setTricksTaken(7);
-    setPhase('bidding');
+    setLastPlayed(new Date().toISOString()); 
   };
 
   const handleRematch = () => {
@@ -254,10 +289,21 @@ export default function TarneebScreen() {
     setPlayers(recalculatedPlayers);
     setGameStatus(newStatus);
     setEditingRound(null);
+    setLastPlayed(new Date().toISOString()); 
   };
 
+  // --- AUTO SAVE EFFECT ---
   useEffect(() => {
+    // 1. Guard: If not loaded or data missing, don't save.
     if (!isLoaded || !gameId) return;
+
+    // 2. Guard: If this is the FIRST load, skip saving to prevent timestamp update.
+    if (isFirstLoad.current) {
+        isFirstLoad.current = false;
+        return;
+    }
+
+    // 3. Save
     const gameState: GameState = {
       id: gameId,
       instanceId: gameId,
@@ -266,19 +312,19 @@ export default function TarneebScreen() {
       mode: 'teams',
       title: gameName, 
       roundLabel: `Round ${roundNum}`, 
-      lastPlayed: new Date().toISOString(),
-      players: players, 
+      lastPlayed: lastPlayed || new Date().toISOString(), // Fallback if empty, but state should handle it
+      players, 
       history,
       scoreLimit,
       isTeamScoreboard: true 
     };
     GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded, gameId, gameStatus]);
+  }, [players, history, roundNum, isLoaded, gameId, gameStatus, lastPlayed]);
 
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   const winners = players.filter(p => p.isWinner);
-  const winnerText = winners.length > 0 ? `${winners.map(p => p.name).join(' & ')}` : "No Winner";
+  const winnersNames = winners.length > 0 ? winners.map(p => p.name).join(' & ') : "No Winner";
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
@@ -357,7 +403,7 @@ export default function TarneebScreen() {
           </View>
         </>
       ) : (
-        <GameOverScreen winners={winnerText} onRematch={handleRematch} />
+        <GameOverScreen winners={winnersNames} onRematch={handleRematch} />
       )}
 
       {editingRound && (
@@ -407,7 +453,8 @@ export default function TarneebScreen() {
   );
 }
 
-// --- Sub-Components ---
+// --- Sub-Components (Unchanged) ---
+
 const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, setTricksTaken, teamNames, isModal = false }: any) => (
   <>
     <Text style={[styles.sectionLabel, isModal && {fontSize: 10, marginBottom: 4}]}>Which team is calling?</Text>

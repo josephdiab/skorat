@@ -1,7 +1,7 @@
 import { useKeepAwake } from "expo-keep-awake";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Heart } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -27,9 +27,13 @@ export default function LeekhaScreen() {
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);
 
+  // --- Refs ---
+  const isFirstLoad = useRef(true);
+
   // --- State ---
   const [isLoaded, setIsLoaded] = useState(false);
   const [gameId, setGameId] = useState<string>("");
+  const [lastPlayed, setLastPlayed] = useState<string>(""); 
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<RoundHistory[]>([]);
@@ -68,6 +72,9 @@ export default function LeekhaScreen() {
           setGameName(savedGame.title);
           setScoreLimit(savedGame.scoreLimit || 101);
           setGameStatus(savedGame.status);
+          
+          setLastPlayed(savedGame.lastPlayed); 
+
           setIsLoaded(true);
           return;
         }
@@ -86,11 +93,33 @@ export default function LeekhaScreen() {
             isDanger: false
           }));
           
-          setGameId(Date.now().toString());
+          const newId = Date.now().toString();
+          const now = new Date().toISOString();
+
+          setGameId(newId);
           setPlayers(initialPlayers);
           setMode((params.mode as 'solo' | 'teams') || 'solo');
           setGameName((params.gameName as string) || "LEEKHA");
           setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 101);
+          setLastPlayed(now);
+
+          // Explicit Save on Init
+          const initialGame: GameState = {
+            id: newId,
+            instanceId: newId,
+            gameType: 'leekha',
+            status: 'active',
+            mode: (params.mode as 'solo' | 'teams') || 'solo',
+            title: (params.gameName as string) || "LEEKHA",
+            roundLabel: 'Round 1',
+            lastPlayed: now,
+            players: initialPlayers,
+            history: [],
+            scoreLimit: params.scoreLimit ? Number(params.scoreLimit) : 101,
+            isTeamScoreboard: false,
+          };
+          await GameStorage.save(initialGame);
+
           setIsLoaded(true);
         } catch (e) { console.log("Error init new game", e); }
       }
@@ -163,7 +192,6 @@ export default function LeekhaScreen() {
     const loser = updatedPlayers.find(p => p.totalScore >= scoreLimit);
     
     if (loser) {
-      // DETERMINE WINNERS
       if (mode === 'teams' && updatedPlayers.length === 4) {
           const loserIndex = updatedPlayers.findIndex(p => p.id === loser.id);
           const isTeamALoser = loserIndex === 0 || loserIndex === 1;
@@ -193,6 +221,8 @@ export default function LeekhaScreen() {
     setQsHolder(null);
     setTenHolder(null);
     setRoundNum(prev => prev + 1);
+
+    setLastPlayed(new Date().toISOString()); 
   };
 
   const handleRematch = () => {
@@ -213,10 +243,7 @@ export default function LeekhaScreen() {
     if (!editingRound) return;
     const totalEditHearts = Object.values(editingRound.hearts).reduce((a, b) => a + b, 0);
     
-    // Validation is strictly UI driven, assume valid if button pressed or check here
     if (totalEditHearts !== 13 || !editingRound.qsHolder || !editingRound.tenHolder) {
-      // Keep alert only for edit errors, as visual feedback is harder
-      // Or just return
       return; 
     }
 
@@ -237,7 +264,7 @@ export default function LeekhaScreen() {
 
     newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
 
-    const recalculatedPlayers = players.map(p => {
+    let recalculatedPlayers = players.map(p => {
       const totalScore = newHistory.reduce((sum, round) => sum + (round.playerDetails[p.id]?.score || 0), 0);
       return { 
         ...p, 
@@ -247,14 +274,48 @@ export default function LeekhaScreen() {
       };
     });
 
+    const loser = recalculatedPlayers.find(p => p.totalScore >= scoreLimit);
+    
+    if (loser) {
+      if (mode === 'teams' && recalculatedPlayers.length === 4) {
+          const loserIndex = recalculatedPlayers.findIndex(p => p.id === loser.id);
+          const isTeamALoser = loserIndex === 0 || loserIndex === 1;
+          
+          recalculatedPlayers = recalculatedPlayers.map((p, index) => {
+              const isTeamA = index === 0 || index === 1;
+              return { ...p, isWinner: isTeamALoser ? !isTeamA : isTeamA };
+          });
+      } else {
+          // Solo Mode: Lowest Score Wins
+          const minScore = Math.min(...recalculatedPlayers.map(p => p.totalScore));
+          recalculatedPlayers = recalculatedPlayers.map(p => ({
+              ...p,
+              isWinner: p.totalScore === minScore
+          }));
+      }
+      setGameStatus('completed');
+    } else {
+      setGameStatus('active');
+    }
+
     setHistory(newHistory);
     setPlayers(recalculatedPlayers);
     setEditingRound(null);
+    setLastPlayed(new Date().toISOString()); 
   };
 
   // --- Persistence ---
   useEffect(() => {
+    // 1. Guard: Missing data
     if (!isLoaded || !gameId) return;
+
+    // 2. Guard: First load
+    if (isFirstLoad.current) {
+        isFirstLoad.current = false;
+        return;
+    }
+
+    // 3. Save
     const gameState: GameState = {
       id: gameId,
       instanceId,
@@ -262,7 +323,7 @@ export default function LeekhaScreen() {
       status: gameStatus,
       mode,
       title: gameName,
-      lastPlayed: new Date().toISOString(),
+      lastPlayed: lastPlayed || new Date().toISOString(),
       players,
       history,
       roundLabel: `Round ${roundNum}`,
@@ -270,7 +331,7 @@ export default function LeekhaScreen() {
       isTeamScoreboard: false 
     };
     GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded, gameId, gameStatus]);
+  }, [players, history, roundNum, isLoaded, gameId, gameStatus, lastPlayed]); 
 
   const renderLastRoundIcons = (p: Player) => {
     if (history.length === 0) return <View style={{ height: 16 }} />;

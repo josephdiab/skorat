@@ -33,6 +33,8 @@ export default function Index() {
       new Date(b.lastPlayed).getTime() - new Date(a.lastPlayed).getTime()
     );
     
+    if (ENABLE_LOGS) console.log("Loaded Games:", JSON.stringify(sorted, null, 2));
+    
     setGames(sorted);
     setIsLoading(false);
   };
