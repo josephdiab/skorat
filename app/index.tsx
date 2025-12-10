@@ -1,4 +1,3 @@
-// --- START OF FILE: app\index.tsx ---
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { FlatList, StyleSheet } from "react-native";
@@ -34,8 +33,6 @@ export default function Index() {
       new Date(b.lastPlayed).getTime() - new Date(a.lastPlayed).getTime()
     );
     
-    if (ENABLE_LOGS) console.log("Loaded Games:", JSON.stringify(sorted, null, 2));
-
     setGames(sorted);
     setIsLoading(false);
   };
@@ -53,14 +50,36 @@ export default function Index() {
     if (game.gameType === '400') routePath = "/games/400";
     if (game.gameType === 'tarneeb') routePath = "/games/tarneeb";
 
-    if (ENABLE_LOGS) console.log(`[NAV] Resuming game: ${game.title} (${game.id})`);
-
     router.push({ 
       pathname: routePath as any, 
       params: { 
         instanceId: game.id, 
         resume: "true" 
       } 
+    });
+  };
+
+  // --- REMATCH LOGIC ---
+  const handleRematchGame = (game: GameSummary) => {
+    // 1. Switch tab to 'active' immediately. 
+    // When the user comes back from the game, they will land on the Active list.
+    setTab("active");
+
+    let routePath = "/games/400"; 
+    if (game.gameType === 'leekha') routePath = "/games/leekha";
+    if (game.gameType === '400') routePath = "/games/400";
+    if (game.gameType === 'tarneeb') routePath = "/games/tarneeb";
+
+    const profileParams = game.players.map(p => ({ id: p.profileId, name: p.name }));
+
+    router.push({
+      pathname: routePath as any,
+      params: {
+        playerProfiles: JSON.stringify(profileParams),
+        gameName: game.title,
+        scoreLimit: game.scoreLimit?.toString(),
+        mode: game.mode
+      }
     });
   };
 
@@ -106,6 +125,7 @@ export default function Index() {
             match={item as any} 
             onPress={() => handleResumeGame(item)}
             onDelete={() => handleDeleteGame(item.id)}
+            onRematch={() => handleRematchGame(item)}
           />
         )}
       />
@@ -121,4 +141,3 @@ const styles = StyleSheet.create({
     paddingBottom: 100, 
   },
 });
-// --- END OF FILE: app\index.tsx ---

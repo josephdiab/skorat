@@ -1,9 +1,8 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react-native";
+import { ThumbsDown, ThumbsUp } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -12,7 +11,10 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+// Local Imports
 import { GameHeader } from "../../components/game_header";
+import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
@@ -20,23 +22,12 @@ import { GameStorage } from "../../services/game_storage";
 
 // --- 400 Game Logic Helpers ---
 
-/**
- * Calculates points based on the bid and the player's CURRENT score.
- * Rules:
- * 2-4: Face value
- * 7: 14, 8: 16, 9: 27
- * 10-13: 40
- * * Special Case:
- * If Score < 30: 5 -> 10, 6 -> 12
- * If Score >= 30: 5 -> 5, 6 -> 6
- */
 const calculatePoints = (bid: number, currentScore: number) => {
   if (bid >= 10) return 40;
   if (bid === 9) return 27;
   if (bid === 8) return 16;
   if (bid === 7) return 14;
 
-  // Dynamic Bids (5 & 6) depend on current score
   if (bid === 6) return currentScore >= 30 ? 6 : 12;
   if (bid === 5) return currentScore >= 30 ? 5 : 10;
 
@@ -81,7 +72,7 @@ export default function FourHundredScreen() {
     results: Record<string, boolean>;
   } | null>(null);
   
-  // --- LOAD DATA (Async) ---
+  // --- LOAD DATA ---
   useEffect(() => {
     const loadGameData = async () => {
       if (instanceId) {
@@ -106,7 +97,6 @@ export default function FourHundredScreen() {
         try {
           const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
           
-          // Storage Order: [TeamA_1, TeamA_2, TeamB_1, TeamB_2]
           const initialPlayers: Player[] = profiles.map((p, index) => ({
             id: (index + 1).toString(),
             profileId: p.id,
@@ -174,7 +164,6 @@ export default function FourHundredScreen() {
     let updatedPlayers = players.map(p => {
       const bid = bids[p.id];
       const passed = results[p.id];
-      // Calculate points based on score BEFORE round
       const points = calculatePoints(bid, p.totalScore);
       const change = passed ? points : -points;
       
@@ -191,14 +180,12 @@ export default function FourHundredScreen() {
     const p2 = updatedPlayers[2];
     const p3 = updatedPlayers[3];
 
-    // Qualification: Score >= Limit AND Partner > 0
     const teamA_Qualified = (p0.totalScore >= scoreLimit && p1.totalScore > 0) || 
                             (p1.totalScore >= scoreLimit && p0.totalScore > 0);
 
     const teamB_Qualified = (p2.totalScore >= scoreLimit && p3.totalScore > 0) || 
                             (p3.totalScore >= scoreLimit && p2.totalScore > 0);
 
-    // Determine Winner based on Logic
     let winningTeam: 'A' | 'B' | null = null;
 
     if (teamA_Qualified && !teamB_Qualified) {
@@ -206,7 +193,6 @@ export default function FourHundredScreen() {
     } else if (!teamA_Qualified && teamB_Qualified) {
         winningTeam = 'B';
     } else if (teamA_Qualified && teamB_Qualified) {
-        // Both Qualified - HIGHEST SCORE wins
         const maxA = Math.max(p0.totalScore, p1.totalScore);
         const maxB = Math.max(p2.totalScore, p3.totalScore);
 
@@ -214,14 +200,10 @@ export default function FourHundredScreen() {
             winningTeam = 'A';
         } else if (maxB > maxA) {
             winningTeam = 'B';
-        } else {
-            // TIE: winningTeam remains null. 
-            // Loop continues naturally. No alerts.
         }
     }
 
     if (winningTeam) {
-        // Mark Winners
         updatedPlayers = updatedPlayers.map((player, idx) => {
             const isTeamA = (idx === 0 || idx === 1);
             return {
@@ -231,11 +213,9 @@ export default function FourHundredScreen() {
         });
 
         setPlayers(updatedPlayers);
-        Alert.alert("Game Over!", `Team ${winningTeam} Wins!`);
         setGameStatus('completed');
         setPhase('gameover');
     } else {
-        // No Winner or Tie - Continue Game
         setPlayers(updatedPlayers);
         setRoundNum(prev => prev + 1);
         setPhase('bidding');
@@ -272,7 +252,6 @@ export default function FourHundredScreen() {
     const newHistory = [...history];
     const roundDetails: Record<string, any> = {};
     
-    // 1. Update the edited round in history structure
     players.forEach(p => {
         const bid = editingRound.bids[p.id];
         const passed = editingRound.results[p.id];
@@ -284,7 +263,6 @@ export default function FourHundredScreen() {
         playerDetails: roundDetails 
     };
 
-    // 2. Replay History to Calculate Scores accurately
     let tempPlayers = players.map(p => ({...p, totalScore: 0}));
 
     const finalHistory = newHistory.map(round => {
@@ -292,7 +270,6 @@ export default function FourHundredScreen() {
         
         tempPlayers = tempPlayers.map(p => {
             const rData = round.playerDetails[p.id];
-            // Calculate based on score at start of round
             const points = calculatePoints(rData.bid, p.totalScore);
             const change = rData.passed ? points : -points;
             
@@ -327,7 +304,7 @@ export default function FourHundredScreen() {
       players,
       history,
       scoreLimit: scoreLimit, 
-      isTeamScoreboard: false // Triggers P1, P3, P2, P4 sort in UI
+      isTeamScoreboard: false 
     };
     GameStorage.save(gameState);
   }, [players, history, roundNum, isLoaded, gameId, gameStatus]);
@@ -338,6 +315,9 @@ export default function FourHundredScreen() {
   const orderedPlayersForUI = players.length === 4 
     ? [players[0], players[2], players[1], players[3]]
     : players;
+
+  const winners = players.filter(p => p.isWinner);
+  const winnerText = winners.length > 0 ? `${winners.map(p => p.name).join(' & ')}` : "No Winner";
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
@@ -422,13 +402,7 @@ export default function FourHundredScreen() {
           </View>
         </>
       ) : (
-        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20}}>
-           <Text style={{color: Colors.primary, fontSize: 24, fontWeight: 'bold'}}>Match Completed</Text>
-           <TouchableOpacity style={styles.rematchBtn} onPress={handleRematch}>
-              <RotateCcw size={20} color="#000" />
-              <Text style={styles.rematchText}>REMATCH</Text>
-           </TouchableOpacity>
-        </View>
+        <GameOverScreen winners={winnerText} onRematch={handleRematch} />
       )}
 
       {editingRound && (
@@ -442,26 +416,26 @@ export default function FourHundredScreen() {
                      const bid = editingRound.bids[p.id];
                      const passed = editingRound.results[p.id];
                      return (
-                        <View key={p.id} style={styles.editRow}>
-                           <Text style={styles.editName}>{p.name}</Text>
-                           <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
-                              <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.max(2, bid-1)}}) : null)}>
-                                 <Text style={styles.editBtn}>-</Text>
-                              </TouchableOpacity>
-                              <Text style={styles.editVal}>{bid}</Text>
-                              <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.min(13, bid+1)}}) : null)}>
-                                 <Text style={styles.editBtn}>+</Text>
-                              </TouchableOpacity>
-                           </View>
-                           <TouchableOpacity 
-                              style={[styles.editToggle, passed ? styles.wonActive : styles.brokeActive]}
-                              onPress={() => setEditingRound(prev => prev ? ({...prev, results: {...prev.results, [p.id]: !passed}}) : null)}
-                           >
-                              <Text style={{color: '#fff', fontSize: 12, fontWeight: 'bold'}}>
-                                {passed ? "WON" : "BROKE"}
-                              </Text>
-                           </TouchableOpacity>
-                        </View>
+                       <View key={p.id} style={styles.editRow}>
+                          <Text style={styles.editName}>{p.name}</Text>
+                          <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
+                             <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.max(2, bid-1)}}) : null)}>
+                                <Text style={styles.editBtn}>-</Text>
+                             </TouchableOpacity>
+                             <Text style={styles.editVal}>{bid}</Text>
+                             <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.min(13, bid+1)}}) : null)}>
+                                <Text style={styles.editBtn}>+</Text>
+                             </TouchableOpacity>
+                          </View>
+                          <TouchableOpacity 
+                            style={[styles.editToggle, passed ? styles.wonActive : styles.brokeActive]}
+                            onPress={() => setEditingRound(prev => prev ? ({...prev, results: {...prev.results, [p.id]: !passed}}) : null)}
+                          >
+                            <Text style={{color: '#fff', fontSize: 12, fontWeight: 'bold'}}>
+                              {passed ? "WON" : "BROKE"}
+                            </Text>
+                          </TouchableOpacity>
+                       </View>
                      );
                    })}
                  </View>
@@ -498,9 +472,7 @@ const BiddingCard = ({ player, bid, onAdjust }: { player: Player, bid: number, o
 );
 
 const ScoringCard = ({ player, bid, passed, onSetResult }: { player: Player, bid: number, passed: boolean, onSetResult: (res: boolean) => void }) => {
-  // Pass current score to calculate points correctly
   const points = calculatePoints(bid, player.totalScore);
-  
   return (
     <View style={styles.scoringCardCompact}>
       <View style={styles.scoringInfo}>
@@ -522,7 +494,6 @@ const ScoringCard = ({ player, bid, passed, onSetResult }: { player: Player, bid
   );
 };
 
-// --- Styles (Unchanged) ---
 const styles = StyleSheet.create({
   statusRowFixed: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.l, paddingVertical: Spacing.m, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border, zIndex: 5 },
   phaseTitle: { color: Colors.text, fontSize: 18, fontWeight: 'bold' },
@@ -549,12 +520,6 @@ const styles = StyleSheet.create({
   scorePreviewSmall: { fontSize: 11, fontWeight: 'bold', color: '#fff' },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.l, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
   disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
-  
-  // Rematch Button
-  rematchBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, gap: 8 },
-  rematchText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
-
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20 },
   modalTitle: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },

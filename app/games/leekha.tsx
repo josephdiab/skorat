@@ -1,9 +1,8 @@
 import { useKeepAwake } from "expo-keep-awake";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Heart, RotateCcw } from "lucide-react-native";
+import { Heart } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -12,7 +11,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+// Local Imports
 import { GameHeader } from "../../components/game_header";
+import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
@@ -161,24 +163,15 @@ export default function LeekhaScreen() {
     const loser = updatedPlayers.find(p => p.totalScore >= scoreLimit);
     
     if (loser) {
-      let winMessage = "";
-
       // DETERMINE WINNERS
       if (mode === 'teams' && updatedPlayers.length === 4) {
-          // Team A: Indexes 0 & 1
-          // Team B: Indexes 2 & 3
           const loserIndex = updatedPlayers.findIndex(p => p.id === loser.id);
           const isTeamALoser = loserIndex === 0 || loserIndex === 1;
           
-          // If Team A lost, Team B wins (and vice versa)
           updatedPlayers = updatedPlayers.map((p, index) => {
               const isTeamA = index === 0 || index === 1;
               return { ...p, isWinner: isTeamALoser ? !isTeamA : isTeamA };
           });
-
-          const winningTeam = isTeamALoser ? "Team B" : "Team A";
-          winMessage = `${winningTeam} Wins! (${loser.name} reached limit)`;
-
       } else {
           // Solo Mode: Lowest Score Wins
           const minScore = Math.min(...updatedPlayers.map(p => p.totalScore));
@@ -186,25 +179,21 @@ export default function LeekhaScreen() {
               ...p,
               isWinner: p.totalScore === minScore
           }));
-
-          const winner = updatedPlayers.find(p => p.isWinner);
-          winMessage = `${winner?.name || 'Player'} Wins with ${winner?.totalScore}!`;
       }
 
-      Alert.alert("Game Over", winMessage);
       setGameStatus('completed');
     }
 
-  setPlayers(updatedPlayers); // Save the players (now including isWinner)
+    setPlayers(updatedPlayers);
 
-  // Reset Inputs
-  const resetHearts: Record<string, number> = {};
-  players.forEach(p => resetHearts[p.id] = 0);
-  setHearts(resetHearts);
-  setQsHolder(null);
-  setTenHolder(null);
-  setRoundNum(prev => prev + 1);
-};
+    // Reset Inputs
+    const resetHearts: Record<string, number> = {};
+    players.forEach(p => resetHearts[p.id] = 0);
+    setHearts(resetHearts);
+    setQsHolder(null);
+    setTenHolder(null);
+    setRoundNum(prev => prev + 1);
+  };
 
   const handleRematch = () => {
     const profileParams = players.map(p => ({ id: p.profileId, name: p.name }));
@@ -224,9 +213,11 @@ export default function LeekhaScreen() {
     if (!editingRound) return;
     const totalEditHearts = Object.values(editingRound.hearts).reduce((a, b) => a + b, 0);
     
+    // Validation is strictly UI driven, assume valid if button pressed or check here
     if (totalEditHearts !== 13 || !editingRound.qsHolder || !editingRound.tenHolder) {
-      Alert.alert("Invalid Round", "Hearts must sum to 13 and special cards must be assigned.");
-      return;
+      // Keep alert only for edit errors, as visual feedback is harder
+      // Or just return
+      return; 
     }
 
     const newHistory = [...history];
@@ -251,7 +242,8 @@ export default function LeekhaScreen() {
       return { 
         ...p, 
         totalScore, 
-        isDanger: totalScore >= (scoreLimit * 0.85) 
+        isDanger: totalScore >= (scoreLimit * 0.85),
+        isWinner: false // Reset
       };
     });
 
@@ -308,6 +300,9 @@ export default function LeekhaScreen() {
   const orderedPlayersForUI = players.length === 4 
     ? [players[0], players[2], players[1], players[3]]
     : players;
+
+  const winners = players.filter(p => p.isWinner);
+  const winnersNames = winners.length > 0 ? winners.map(p => p.name).join(' & ') : "No Winner";
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
@@ -372,13 +367,7 @@ export default function LeekhaScreen() {
           </View>
         </>
       ) : (
-        <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20}}>
-           <Text style={{color: Colors.primary, fontSize: 24, fontWeight: 'bold'}}>Match Completed</Text>
-           <TouchableOpacity style={styles.rematchBtn} onPress={handleRematch}>
-              <RotateCcw size={20} color="#000" />
-              <Text style={styles.rematchText}>REMATCH</Text>
-           </TouchableOpacity>
-        </View>
+        <GameOverScreen winners={winnersNames} onRematch={handleRematch} />
       )}
 
       {/* --- Edit Modal --- */}
@@ -495,7 +484,6 @@ const LeekhaPlayerCard = ({ player, roundPoints, heartCount, hasQS, hasTen, isQS
   </View>
 );
 
-// --- Styles (Unchanged) ---
 const styles = StyleSheet.create({
   statusRowFixed: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.l, paddingVertical: Spacing.m, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border, zIndex: 5 },
   sectionTitle: { color: Colors.text, fontSize: 16, fontWeight: 'bold' },
@@ -536,7 +524,4 @@ const styles = StyleSheet.create({
   modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, paddingTop: 20, borderTopWidth: 1, borderTopColor: Colors.border },
   modalCancel: { padding: 12 },
   modalSave: { backgroundColor: Colors.primary, padding: 12, borderRadius: 8 },
-  // Rematch Button
-  rematchBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, gap: 8 },
-  rematchText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
 });
