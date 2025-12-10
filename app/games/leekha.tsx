@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -16,7 +15,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
-import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
+import { GameStyles } from "../../constants/game_styles"; // <--- Styles Imported
+import { Colors, GlobalStyles } from "../../constants/theme";
 import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
 import { GameStorage } from "../../services/game_storage";
 
@@ -103,7 +103,6 @@ export default function LeekhaScreen() {
           setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 101);
           setLastPlayed(now);
 
-          // Explicit Save on Init
           const initialGame: GameState = {
             id: newId,
             instanceId: newId,
@@ -136,7 +135,7 @@ export default function LeekhaScreen() {
     }
   }, [players]);
 
-  // --- Logic ---
+  // --- Handlers ---
   const getRoundPoints = (h: number, isQS: boolean, isTen: boolean) => {
     let points = h;
     if (isQS) points += 13;
@@ -148,10 +147,8 @@ export default function LeekhaScreen() {
   const remainingHearts = 13 - totalHeartsAssigned;
   const currentRoundPoints = (pid: string) => getRoundPoints(hearts[pid] || 0, qsHolder === pid, tenHolder === pid);
   const currentTotalPoints = players.reduce((sum, p) => sum + currentRoundPoints(p.id), 0);
-  
   const isRoundValid = remainingHearts === 0 && qsHolder !== null && tenHolder !== null && currentTotalPoints === 36;
 
-  // --- Handlers ---
   const handleHeartChange = (pid: string, delta: number) => {
     const current = hearts[pid] || 0;
     const newVal = current + delta;
@@ -178,56 +175,43 @@ export default function LeekhaScreen() {
 
     setHistory(prev => [...prev, { roundNum, playerDetails: currentRoundDetails }]);
 
-    // 1. Calculate new totals
     let updatedPlayers = players.map(p => {
       const newTotal = p.totalScore + currentRoundPoints(p.id);
-      return {
-        ...p,
-        totalScore: newTotal,
-        isDanger: newTotal >= (scoreLimit * 0.85) 
-      };
+      return { ...p, totalScore: newTotal, isDanger: newTotal >= (scoreLimit * 0.85) };
     });
     
-    // 2. Check for Loser (Limit Reached)
     const loser = updatedPlayers.find(p => p.totalScore >= scoreLimit);
     
     if (loser) {
       if (mode === 'teams' && updatedPlayers.length === 4) {
           const loserIndex = updatedPlayers.findIndex(p => p.id === loser.id);
           const isTeamALoser = loserIndex === 0 || loserIndex === 1;
-          
           updatedPlayers = updatedPlayers.map((p, index) => {
               const isTeamA = index === 0 || index === 1;
               return { ...p, isWinner: isTeamALoser ? !isTeamA : isTeamA };
           });
       } else {
-          // Solo Mode: Lowest Score Wins
           const minScore = Math.min(...updatedPlayers.map(p => p.totalScore));
           updatedPlayers = updatedPlayers.map(p => ({
               ...p,
               isWinner: p.totalScore === minScore
           }));
       }
-
       setGameStatus('completed');
     }
 
     setPlayers(updatedPlayers);
-
-    // Reset Inputs
     const resetHearts: Record<string, number> = {};
     players.forEach(p => resetHearts[p.id] = 0);
     setHearts(resetHearts);
     setQsHolder(null);
     setTenHolder(null);
     setRoundNum(prev => prev + 1);
-
     setLastPlayed(new Date().toISOString()); 
   };
 
   const handleRematch = () => {
     const profileParams = players.map(p => ({ id: p.profileId, name: p.name }));
-
     router.push({
       pathname: "/games/leekha",
       params: {
@@ -244,7 +228,7 @@ export default function LeekhaScreen() {
     const totalEditHearts = Object.values(editingRound.hearts).reduce((a, b) => a + b, 0);
     
     if (totalEditHearts !== 13 || !editingRound.qsHolder || !editingRound.tenHolder) {
-      return; 
+      return;
     }
 
     const newHistory = [...history];
@@ -254,24 +238,14 @@ export default function LeekhaScreen() {
       const h = editingRound.hearts[p.id] || 0;
       const qs = editingRound.qsHolder === p.id;
       const ten = editingRound.tenHolder === p.id;
-      roundDetails[p.id] = {
-        score: getRoundPoints(h, qs, ten),
-        hearts: h,
-        hasQS: qs,
-        hasTen: ten
-      };
+      roundDetails[p.id] = { score: getRoundPoints(h, qs, ten), hearts: h, hasQS: qs, hasTen: ten };
     });
 
     newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
 
     let recalculatedPlayers = players.map(p => {
       const totalScore = newHistory.reduce((sum, round) => sum + (round.playerDetails[p.id]?.score || 0), 0);
-      return { 
-        ...p, 
-        totalScore, 
-        isDanger: totalScore >= (scoreLimit * 0.85),
-        isWinner: false // Reset
-      };
+      return { ...p, totalScore, isDanger: totalScore >= (scoreLimit * 0.85), isWinner: false };
     });
 
     const loser = recalculatedPlayers.find(p => p.totalScore >= scoreLimit);
@@ -280,13 +254,11 @@ export default function LeekhaScreen() {
       if (mode === 'teams' && recalculatedPlayers.length === 4) {
           const loserIndex = recalculatedPlayers.findIndex(p => p.id === loser.id);
           const isTeamALoser = loserIndex === 0 || loserIndex === 1;
-          
           recalculatedPlayers = recalculatedPlayers.map((p, index) => {
               const isTeamA = index === 0 || index === 1;
               return { ...p, isWinner: isTeamALoser ? !isTeamA : isTeamA };
           });
       } else {
-          // Solo Mode: Lowest Score Wins
           const minScore = Math.min(...recalculatedPlayers.map(p => p.totalScore));
           recalculatedPlayers = recalculatedPlayers.map(p => ({
               ...p,
@@ -304,18 +276,9 @@ export default function LeekhaScreen() {
     setLastPlayed(new Date().toISOString()); 
   };
 
-  // --- Persistence ---
   useEffect(() => {
-    // 1. Guard: Missing data
-    if (!isLoaded || !gameId) return;
-
-    // 2. Guard: First load
-    if (isFirstLoad.current) {
-        isFirstLoad.current = false;
-        return;
-    }
-
-    // 3. Save
+    if (!isLoaded || !gameId || !lastPlayed) return;
+    if (isFirstLoad.current) { isFirstLoad.current = false; return; }
     const gameState: GameState = {
       id: gameId,
       instanceId,
@@ -323,7 +286,7 @@ export default function LeekhaScreen() {
       status: gameStatus,
       mode,
       title: gameName,
-      lastPlayed: lastPlayed || new Date().toISOString(),
+      lastPlayed, 
       players,
       history,
       roundLabel: `Round ${roundNum}`,
@@ -331,24 +294,23 @@ export default function LeekhaScreen() {
       isTeamScoreboard: false 
     };
     GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded, gameId, gameStatus, lastPlayed]); 
+  }, [players, history, roundNum, isLoaded, gameId, gameStatus, lastPlayed]);
 
   const renderLastRoundIcons = (p: Player) => {
     if (history.length === 0) return <View style={{ height: 16 }} />;
     const details = history[history.length - 1].playerDetails[p.id];
     if (!details) return <View style={{ height: 16 }} />;
-    
     const hasIcons = details.hasQS || details.hasTen || details.hearts > 0;
     if (!hasIcons) return <View style={{ height: 16 }} />;
 
     return (
-      <View style={styles.lastRoundIcons}>
-          {details.hasQS && <Text style={styles.iconQS}>Q♠</Text>}
-          {details.hasTen && <Text style={styles.iconTen}>10♦</Text>}
+      <View style={GameStyles.lastRoundIcons}>
+          {details.hasQS && <Text style={GameStyles.iconQS}>Q♠</Text>}
+          {details.hasTen && <Text style={GameStyles.iconTen}>10♦</Text>}
           {details.hearts > 0 && (
-            <View style={styles.iconHeartContainer}>
+            <View style={GameStyles.iconHeartContainer}>
               <Heart size={10} color={Colors.danger} fill={Colors.danger} />
-              <Text style={styles.iconHeartText}>{details.hearts}</Text>
+              <Text style={GameStyles.iconHeartText}>{details.hearts}</Text>
             </View>
           )}
       </View>
@@ -357,24 +319,18 @@ export default function LeekhaScreen() {
 
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
-  // Ordered for Inputs: P1(A), P3(B), P2(A), P4(B)
-  const orderedPlayersForUI = players.length === 4 
-    ? [players[0], players[2], players[1], players[3]]
-    : players;
-
+  const orderedPlayersForUI = players.length === 4 ? [players[0], players[2], players[1], players[3]] : players;
   const winners = players.filter(p => p.isWinner);
   const winnersNames = winners.length > 0 ? winners.map(p => p.name).join(' & ') : "No Winner";
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
-
       <GameHeader 
         title={gameName.toUpperCase()} 
         subtitle={gameStatus === 'completed' ? "COMPLETED" : `Score Limit: ${scoreLimit}`} 
         onBack={() => router.dismissAll()} 
       />
-      
       <ScoreboardHistory 
         players={players} history={history} 
         isExpanded={isExpanded} toggleExpand={() => setIsExpanded(!isExpanded)} 
@@ -394,13 +350,12 @@ export default function LeekhaScreen() {
 
       {gameStatus !== 'completed' ? (
         <>
-          <View style={styles.statusRowFixed}>
-            <Text style={styles.sectionTitle}>Round {roundNum}</Text>
+          <View style={GameStyles.statusRowFixed}>
+            <Text style={GameStyles.sectionTitle}>Round {roundNum}</Text>
             <StatusBadges remainingHearts={remainingHearts} qsHolder={qsHolder} tenHolder={tenHolder} />
           </View>
-
           <View style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={{ paddingHorizontal: Spacing.l, paddingBottom: 100, paddingTop: Spacing.xl }}>
+            <ScrollView contentContainerStyle={GameStyles.scrollContent}>
               {orderedPlayersForUI.map(p => (
                 <LeekhaPlayerCard 
                   key={p.id} player={p}
@@ -415,10 +370,9 @@ export default function LeekhaScreen() {
               ))}
             </ScrollView>
           </View>
-
-          <View style={styles.footer}>
+          <View style={GameStyles.footer}>
             <TouchableOpacity 
-              style={[GlobalStyles.primaryButton, !isRoundValid && styles.disabledButton]} 
+              style={[GlobalStyles.primaryButton, !isRoundValid && GameStyles.disabledButton]} 
               onPress={commitRound} 
               disabled={!isRoundValid} 
               activeOpacity={0.8}
@@ -431,21 +385,18 @@ export default function LeekhaScreen() {
         <GameOverScreen winners={winnersNames} onRematch={handleRematch} />
       )}
 
-      {/* --- Edit Modal --- */}
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
-           <View style={styles.modalOverlay}>
-             <View style={styles.modalContent}>
-               <Text style={styles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
-               
-               <View style={styles.modalStatusRow}>
+           <View style={GameStyles.modalOverlay}>
+             <View style={GameStyles.modalContent}>
+               <Text style={GameStyles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
+               <View style={GameStyles.modalStatusRow}>
                   <StatusBadges 
                     remainingHearts={13 - Object.values(editingRound.hearts).reduce((a,b)=>a+b,0)}
                     qsHolder={editingRound.qsHolder}
                     tenHolder={editingRound.tenHolder}
                   />
                </View>
-
                <ScrollView style={{ maxHeight: 400 }}>
                  <View style={{ gap: 12 }}>
                    {orderedPlayersForUI.map(p => {
@@ -455,13 +406,12 @@ export default function LeekhaScreen() {
                      const isQSLocked = editingRound.qsHolder !== null && !hasQS;
                      const isTenLocked = editingRound.tenHolder !== null && !hasTen;
                      const heartsLeft = 13 - Object.values(editingRound.hearts).reduce((a,b)=>a+b,0);
-
                      return (
-                        <View key={p.id} style={styles.compactCard}>
-                           <View style={styles.compactInfo}>
-                             <Text style={styles.playerName} numberOfLines={1}>{p.name}</Text>
+                        <View key={p.id} style={GameStyles.compactCard}>
+                           <View style={GameStyles.compactInfo}>
+                             <Text style={GameStyles.playerName} numberOfLines={1}>{p.name}</Text>
                            </View>
-                           <View style={styles.compactControls}>
+                           <View style={GameStyles.compactControls}>
                              <HeartControl 
                                value={h}
                                onDecrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: Math.max(0, h-1)}}) : null)}
@@ -477,9 +427,9 @@ export default function LeekhaScreen() {
                    })}
                  </View>
                </ScrollView>
-               <View style={styles.modalFooter}>
-                 <TouchableOpacity onPress={() => setEditingRound(null)} style={styles.modalCancel}><Text style={{color: Colors.textMuted}}>Cancel</Text></TouchableOpacity>
-                 <TouchableOpacity onPress={saveEditedRound} style={styles.modalSave}><Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text></TouchableOpacity>
+               <View style={GameStyles.modalFooter}>
+                 <TouchableOpacity onPress={() => setEditingRound(null)} style={GameStyles.modalCancel}><Text style={{color: Colors.textMuted}}>Cancel</Text></TouchableOpacity>
+                 <TouchableOpacity onPress={saveEditedRound} style={GameStyles.modalSave}><Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text></TouchableOpacity>
                </View>
              </View>
            </View>
@@ -489,100 +439,57 @@ export default function LeekhaScreen() {
   );
 }
 
-// --- Reusable Sub-Components (Unchanged) ---
-
+// --- Sub-Components ---
 const StatusBadges = ({ remainingHearts, qsHolder, tenHolder }: { remainingHearts: number, qsHolder: string | null, tenHolder: string | null }) => (
   <View style={GlobalStyles.row}>
-    <View style={[styles.badge, remainingHearts === 0 ? styles.badgeNeutral : styles.badgeError]}>
+    <View style={[GameStyles.badge, remainingHearts === 0 ? GameStyles.badgeNeutral : GameStyles.badgeError]}>
       <Heart size={14} color={remainingHearts === 0 ? Colors.textMuted : Colors.danger} fill={remainingHearts === 0 ? "none" : Colors.danger} />
-      <Text style={[styles.badgeText, remainingHearts !== 0 && { color: Colors.danger }]}>{remainingHearts}</Text>
+      <Text style={[GameStyles.badgeText, remainingHearts !== 0 && { color: Colors.danger }]}>{remainingHearts}</Text>
     </View>
-    <View style={[styles.badge, qsHolder ? styles.badgeNeutral : styles.badgeQS, { marginLeft: 8 }]}>
-      <Text style={[styles.badgeText, !qsHolder ? { color: Colors.text } : { color: Colors.textMuted }]}>Q♠</Text>
+    <View style={[GameStyles.badge, qsHolder ? GameStyles.badgeNeutral : GameStyles.badgeQS, { marginLeft: 8 }]}>
+      <Text style={[GameStyles.badgeText, !qsHolder ? { color: Colors.text } : { color: Colors.textMuted }]}>Q♠</Text>
     </View>
-    <View style={[styles.badge, tenHolder ? styles.badgeNeutral : styles.badgeTen, { marginLeft: 8 }]}>
-      <Text style={[styles.badgeText, !tenHolder ? { color: Colors.danger } : { color: Colors.textMuted }]}>10♦</Text>
+    <View style={[GameStyles.badge, tenHolder ? GameStyles.badgeNeutral : GameStyles.badgeTen, { marginLeft: 8 }]}>
+      <Text style={[GameStyles.badgeText, !tenHolder ? { color: Colors.danger } : { color: Colors.textMuted }]}>10♦</Text>
     </View>
   </View>
 );
 
 const HeartControl = ({ value, onDecrement, onIncrement, disableDec, disableInc }: any) => (
-  <View style={styles.compactCounter}>
-    <TouchableOpacity onPress={onDecrement} disabled={disableDec} style={styles.compactBtn} activeOpacity={0.8}>
-      <Text style={styles.compactBtnText}>-</Text>
+  <View style={GameStyles.compactCounter}>
+    <TouchableOpacity onPress={onDecrement} disabled={disableDec} style={GameStyles.compactBtn} activeOpacity={0.8}>
+      <Text style={GameStyles.compactBtnText}>-</Text>
     </TouchableOpacity>
-    <View style={styles.compactHeartVal}>
+    <View style={GameStyles.compactHeartVal}>
       <Heart size={14} color={Colors.danger} fill={Colors.danger} />
-      <Text style={styles.compactValText}>{value}</Text>
+      <Text style={GameStyles.compactValText}>{value}</Text>
     </View>
-    <TouchableOpacity onPress={onIncrement} disabled={disableInc} style={styles.compactBtn} activeOpacity={0.8}>
-      <Text style={styles.compactBtnText}>+</Text>
+    <TouchableOpacity onPress={onIncrement} disabled={disableInc} style={GameStyles.compactBtn} activeOpacity={0.8}>
+      <Text style={GameStyles.compactBtnText}>+</Text>
     </TouchableOpacity>
   </View>
 );
 
 const CardToggleButton = ({ type, active, locked, onPress, style }: any) => (
   <TouchableOpacity onPress={onPress} activeOpacity={0.8} disabled={locked}
-    style={[styles.compactSpecialBtn, active ? (type === 'QS' ? styles.qsActive : styles.tenActive) : styles.specialCardInactive, locked && { opacity: 0.3 }, style]}
+    style={[GameStyles.compactSpecialBtn, active ? (type === 'QS' ? GameStyles.qsActive : GameStyles.tenActive) : GameStyles.specialCardInactive, locked && { opacity: 0.3 }, style]}
   >
-    <Text style={[styles.compactSpecialText, active ? (type === 'QS' ? {color: Colors.text} : {color: Colors.danger}) : {color: Colors.textMuted}]}>
+    <Text style={[GameStyles.compactSpecialText, active ? (type === 'QS' ? {color: Colors.text} : {color: Colors.danger}) : {color: Colors.textMuted}]}>
       {type === 'QS' ? 'Q♠' : '10♦'}
     </Text>
   </TouchableOpacity>
 );
 
 const LeekhaPlayerCard = ({ player, roundPoints, heartCount, hasQS, hasTen, isQSLocked, isTenLocked, remainingHearts, onHeartChange, onToggleQS, onToggleTen }: any) => (
-  <View style={styles.compactCard}>
-    <View style={styles.compactInfo}>
-      <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
-      <Text style={styles.roundPoints}>{roundPoints > 0 ? `+${roundPoints}` : roundPoints}</Text>
+  <View style={GameStyles.compactCard}>
+    <View style={GameStyles.compactInfo}>
+      <Text style={GameStyles.playerName} numberOfLines={1}>{player.name}</Text>
+      <Text style={GameStyles.roundPoints}>{roundPoints > 0 ? `+${roundPoints}` : roundPoints}</Text>
     </View>
-    <View style={styles.compactControls}>
+    <View style={GameStyles.compactControls}>
       <HeartControl value={heartCount} onDecrement={() => onHeartChange(player.id, -1)} onIncrement={() => onHeartChange(player.id, 1)} disableDec={heartCount === 0} disableInc={remainingHearts === 0} />
       <CardToggleButton type="QS" active={hasQS} locked={isQSLocked} onPress={() => onToggleQS(player.id)} />
       <CardToggleButton type="10D" active={hasTen} locked={isTenLocked} onPress={() => onToggleTen(player.id)} style={{ marginLeft: 6 }} />
     </View>
   </View>
 );
-
-const styles = StyleSheet.create({
-  statusRowFixed: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.l, paddingVertical: Spacing.m, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border, zIndex: 5 },
-  sectionTitle: { color: Colors.text, fontSize: 16, fontWeight: 'bold' },
-  badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, gap: 4 },
-  badgeNeutral: { backgroundColor: Colors.surfaceInner, borderColor: Colors.border },
-  badgeError: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: 'rgba(255, 82, 82, 0.3)' },
-  badgeQS: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderColor: 'rgba(255, 255, 255, 0.3)' },
-  badgeTen: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: 'rgba(255, 82, 82, 0.3)' },
-  badgeText: { fontSize: 14, fontWeight: 'bold', color: Colors.textMuted },
-  compactCard: { backgroundColor: Colors.surface, borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 80 },
-  compactInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  playerName: { color: Colors.text, fontSize: 18, fontWeight: '600', maxWidth: 120 },
-  roundPoints: { color: Colors.textMuted, fontSize: 16, fontWeight: '600' },
-  compactControls: { flexDirection: 'row', alignItems: 'center' },
-  compactCounter: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceInner, borderRadius: 8, padding: 4, marginRight: 10 },
-  compactBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceLight, borderRadius: 8 },
-  compactBtnText: { color: Colors.text, fontSize: 24, fontWeight: 'bold', marginTop: -2 },
-  compactHeartVal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: 45, gap: 4 },
-  compactValText: { color: Colors.text, fontSize: 18, fontWeight: 'bold' },
-  compactSpecialBtn: { width: 48, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  specialCardInactive: { backgroundColor: Colors.surfaceInner, borderColor: Colors.border },
-  compactSpecialText: { fontSize: 14, fontWeight: 'bold', color: Colors.textMuted },
-  qsActive: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderColor: Colors.text },
-  tenActive: { backgroundColor: 'rgba(255, 82, 82, 0.15)', borderColor: Colors.danger },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.l, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
-  disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
-  lastRoundIcons: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 4, height: 16 },
-  iconQS: { color: Colors.text, fontSize: 10, fontWeight: 'bold' },
-  iconTen: { color: Colors.danger, fontSize: 10, fontWeight: 'bold' },
-  iconHeartContainer: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  iconHeartText: { color: Colors.danger, fontSize: 10, fontWeight: 'bold' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', padding: 10 },
-  modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, paddingBottom: 30 },
-  modalTitle: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  modalStatusRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 20 },
-  editRow: { marginBottom: 16 }, 
-  editName: { color: Colors.text, width: 80, fontSize: 14, fontWeight: '600' },
-  modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, paddingTop: 20, borderTopWidth: 1, borderTopColor: Colors.border },
-  modalCancel: { padding: 12 },
-  modalSave: { backgroundColor: Colors.primary, padding: 12, borderRadius: 8 },
-});

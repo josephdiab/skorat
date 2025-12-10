@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View
@@ -15,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
+import { GameStyles } from "../../constants/game_styles"; // <--- NEW IMPORT
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
 import { GameStorage } from "../../services/game_storage";
@@ -25,9 +25,6 @@ export default function TarneebScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = (params.instanceId as string) || (params.id as string);
-  
-  // --- Refs ---
-  // Blocks the auto-save on initial load
   const isFirstLoad = useRef(true);
 
   // --- State ---
@@ -99,9 +96,7 @@ export default function TarneebScreen() {
           setScoreLimit(savedGame.scoreLimit || 31);
           setGameStatus(savedGame.status);
           if (savedGame.status === 'completed') setPhase('gameover');
-          
           setLastPlayed(savedGame.lastPlayed); 
-
           setIsLoaded(true);
           return;
         }
@@ -122,14 +117,12 @@ export default function TarneebScreen() {
           
           const newId = Date.now().toString();
           const now = new Date().toISOString();
-
           setGameId(newId);
           setPlayers(initialPlayers);
           setGameName((params.gameName as string) || "TARNEEB");
           setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 31);
           setLastPlayed(now);
 
-          // Force save only on creation
           const initialGame: GameState = {
             id: newId,
             instanceId: newId,
@@ -145,7 +138,6 @@ export default function TarneebScreen() {
             isTeamScoreboard: true,
           };
           await GameStorage.save(initialGame);
-
           setIsLoaded(true);
         } catch (e) { console.log(e); }
       }
@@ -153,7 +145,7 @@ export default function TarneebScreen() {
     loadGameData();
   }, [instanceId]);
 
-  // --- Logic ---
+  // --- Handlers ---
   const calculateRoundScores = (caller: 'A' | 'B' | null, bid: number, tricks: number) => {
     if (!caller) return null; 
     const success = tricks >= bid;
@@ -166,20 +158,16 @@ export default function TarneebScreen() {
     };
   };
 
-  // --- Handlers ---
   const commitRound = () => {
     if (!callingTeam) return;
     const result = calculateRoundScores(callingTeam, bidAmount, tricksTaken);
     if (!result) return;
 
     const roundDetails: Record<string, any> = {};
-    
-    // Update Scores & Reset Winner
     let updatedPlayers = players.map((p, index) => {
       const isTeamA = index < 2;
       const pointsChange = isTeamA ? result.pointsA : result.pointsB;
       const isMyTeamCalling = (isTeamA && callingTeam === 'A') || (!isTeamA && callingTeam === 'B');
-
       roundDetails[p.id] = { score: pointsChange, isCaller: isMyTeamCalling, bid: bidAmount, tricks: tricksTaken };
       const newTotal = p.totalScore + pointsChange;
       return { ...p, totalScore: newTotal, isDanger: newTotal < 0, isWinner: false };
@@ -187,7 +175,6 @@ export default function TarneebScreen() {
 
     setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
 
-    // Check Win
     const scoreA = updatedPlayers[0].totalScore;
     const scoreB = updatedPlayers[2].totalScore;
     let winningTeam: 'A' | 'B' | null = null;
@@ -213,7 +200,6 @@ export default function TarneebScreen() {
         setTricksTaken(7);
         setPhase('bidding');
     }
-
     setLastPlayed(new Date().toISOString()); 
   };
 
@@ -255,7 +241,6 @@ export default function TarneebScreen() {
       const isMyTeamCalling = (isTeamA && editingRound.callingTeam === 'A') || (!isTeamA && editingRound.callingTeam === 'B');
       roundDetails[p.id] = { score: pointsChange, isCaller: isMyTeamCalling, bid: editingRound.bidAmount, tricks: editingRound.tricksTaken };
     });
-    
     newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
 
     let recalculatedPlayers = players.map(p => {
@@ -292,18 +277,9 @@ export default function TarneebScreen() {
     setLastPlayed(new Date().toISOString()); 
   };
 
-  // --- AUTO SAVE EFFECT ---
   useEffect(() => {
-    // 1. Guard: If not loaded or data missing, don't save.
-    if (!isLoaded || !gameId) return;
-
-    // 2. Guard: If this is the FIRST load, skip saving to prevent timestamp update.
-    if (isFirstLoad.current) {
-        isFirstLoad.current = false;
-        return;
-    }
-
-    // 3. Save
+    if (!isLoaded || !gameId || !lastPlayed) return;
+    if (isFirstLoad.current) { isFirstLoad.current = false; return; }
     const gameState: GameState = {
       id: gameId,
       instanceId: gameId,
@@ -312,7 +288,7 @@ export default function TarneebScreen() {
       mode: 'teams',
       title: gameName, 
       roundLabel: `Round ${roundNum}`, 
-      lastPlayed: lastPlayed || new Date().toISOString(), // Fallback if empty, but state should handle it
+      lastPlayed,
       players, 
       history,
       scoreLimit,
@@ -324,7 +300,7 @@ export default function TarneebScreen() {
   if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   const winners = players.filter(p => p.isWinner);
-  const winnersNames = winners.length > 0 ? winners.map(p => p.name).join(' & ') : "No Winner";
+  const winnerText = winners.length > 0 ? `${winners.map(p => p.name).join(' & ')}` : "No Winner";
 
   return (
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
@@ -346,26 +322,26 @@ export default function TarneebScreen() {
 
       {phase !== 'gameover' ? (
         <>
-          <View style={styles.statusRowFixed}>
+          <View style={GameStyles.statusRowFixed}>
             {phase === 'bidding' ? (
               <>
-                <Text style={styles.phaseTitle}>Place Bids</Text>
-                <View style={[styles.badge, callingTeam ? styles.badgeSuccess : styles.badgeError]}>
-                    <Text style={[styles.badgeText, callingTeam ? { color: Colors.primary } : { color: Colors.danger }]}>
+                <Text style={GameStyles.phaseTitle}>Place Bids</Text>
+                <View style={[GameStyles.badge, callingTeam ? GameStyles.badgeSuccess : GameStyles.badgeError]}>
+                    <Text style={[GameStyles.badgeText, callingTeam ? { color: Colors.primary } : { color: Colors.danger }]}>
                       Total: {callingTeam ? bidAmount : 0}
                     </Text>
                 </View>
               </>
             ) : (
               <>
-                <Text style={styles.phaseTitle}>Round Results</Text>
+                <Text style={GameStyles.phaseTitle}>Round Results</Text>
                 <Text style={GlobalStyles.textSmall}>Select Outcome</Text>
               </>
             )}
           </View>
 
           <View style={{ flex: 1 }}>
-            <ScrollView contentContainerStyle={{ padding: Spacing.l, paddingBottom: 120, paddingTop: Spacing.xl }}>
+            <ScrollView contentContainerStyle={GameStyles.scrollContent}>
               {phase === 'bidding' ? (
                 <BiddingPhase 
                   callingTeam={callingTeam} 
@@ -386,10 +362,10 @@ export default function TarneebScreen() {
             </ScrollView>
           </View>
 
-          <View style={styles.footer}>
+          <View style={GameStyles.footer}>
             {phase === 'bidding' ? (
               <TouchableOpacity 
-                style={[GlobalStyles.primaryButton, !callingTeam && styles.disabledButton]} 
+                style={[GlobalStyles.primaryButton, !callingTeam && GameStyles.disabledButton]} 
                 onPress={() => setPhase('scoring')}
                 disabled={!callingTeam}
               >
@@ -403,18 +379,18 @@ export default function TarneebScreen() {
           </View>
         </>
       ) : (
-        <GameOverScreen winners={winnersNames} onRematch={handleRematch} />
+        <GameOverScreen winners={winnerText} onRematch={handleRematch} />
       )}
 
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
-           <View style={styles.modalOverlay}>
-             <View style={styles.modalContent}>
-               <Text style={styles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
+           <View style={GameStyles.modalOverlay}>
+             <View style={GameStyles.modalContent}>
+               <Text style={GameStyles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
                <ScrollView style={{ maxHeight: 400 }}>
                  <View style={{gap: 20}}>
                    <View>
-                     <Text style={[styles.sectionLabel, {marginBottom: 10}]}>Bidding</Text>
+                     <Text style={[GameStyles.sectionLabel, {marginBottom: 10}]}>Bidding</Text>
                      <BiddingPhase 
                         callingTeam={editingRound.callingTeam} 
                         setCallingTeam={(t: any) => setEditingRound(prev => prev ? ({...prev, callingTeam: t}) : null)}
@@ -426,7 +402,7 @@ export default function TarneebScreen() {
                       />
                    </View>
                    <View style={{borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 20}}>
-                     <Text style={[styles.sectionLabel, {marginBottom: 10}]}>Result</Text>
+                     <Text style={[GameStyles.sectionLabel, {marginBottom: 10}]}>Result</Text>
                      <ScoringPhase 
                         callingTeam={editingRound.callingTeam} 
                         tricksTaken={editingRound.tricksTaken} 
@@ -437,11 +413,11 @@ export default function TarneebScreen() {
                    </View>
                  </View>
                </ScrollView>
-               <View style={styles.modalFooter}>
-                 <TouchableOpacity onPress={() => setEditingRound(null)} style={styles.modalCancel}>
+               <View style={GameStyles.modalFooter}>
+                 <TouchableOpacity onPress={() => setEditingRound(null)} style={GameStyles.modalCancel}>
                    <Text style={{color: Colors.textMuted}}>Cancel</Text>
                  </TouchableOpacity>
-                 <TouchableOpacity onPress={saveEditedRound} style={styles.modalSave}>
+                 <TouchableOpacity onPress={saveEditedRound} style={GameStyles.modalSave}>
                    <Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text>
                  </TouchableOpacity>
                </View>
@@ -453,38 +429,38 @@ export default function TarneebScreen() {
   );
 }
 
-// --- Sub-Components (Unchanged) ---
+// --- Sub-Components (Styled with GameStyles) ---
 
 const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, setTricksTaken, teamNames, isModal = false }: any) => (
   <>
-    <Text style={[styles.sectionLabel, isModal && {fontSize: 10, marginBottom: 4}]}>Which team is calling?</Text>
-    <View style={[styles.grid, isModal && {gap: 8}]}>
+    <Text style={[GameStyles.sectionLabel, isModal && {fontSize: 10, marginBottom: 4}]}>Which team is calling?</Text>
+    <View style={[GameStyles.grid, isModal && {gap: 8}]}>
       {['A', 'B'].map((team) => (
         <TouchableOpacity
           key={team}
           style={[
-            styles.playerOption, 
-            callingTeam === team && styles.playerOptionActive,
+            GameStyles.playerOption, 
+            callingTeam === team && GameStyles.playerOptionActive,
             isModal && { padding: 12, borderRadius: 12 } 
           ]}
           onPress={() => setCallingTeam(team)}
           activeOpacity={0.8}
         >
-          <Text style={[styles.teamNameBig, callingTeam === team && { color: Colors.primary }, isModal && {fontSize: 16, marginBottom: 2}]}>Team {team}</Text>
-          <Text style={[styles.teamPlayers, isModal && {fontSize: 10}]}>{teamNames[team]}</Text>
+          <Text style={[GameStyles.teamNameBig, callingTeam === team && { color: Colors.primary }, isModal && {fontSize: 16, marginBottom: 2}]}>Team {team}</Text>
+          <Text style={[GameStyles.teamPlayers, isModal && {fontSize: 10}]}>{teamNames[team]}</Text>
           {callingTeam === team && <Crown size={isModal ? 16 : 20} color={Colors.primary} style={{marginTop: isModal ? 4 : 8}} />}
         </TouchableOpacity>
       ))}
     </View>
 
-    <Text style={[styles.sectionLabel, { marginTop: Spacing.l }, isModal && {marginTop: Spacing.m, fontSize: 10, marginBottom: 4}]}>Call Amount</Text>
-    <View style={[styles.bidGrid, isModal && {gap: 8}]}>
+    <Text style={[GameStyles.sectionLabel, { marginTop: Spacing.l }, isModal && {marginTop: Spacing.m, fontSize: 10, marginBottom: 4}]}>Call Amount</Text>
+    <View style={[GameStyles.bidGrid, isModal && {gap: 8}]}>
       {[7, 8, 9, 10, 11, 12, 13].map(num => (
         <TouchableOpacity
           key={num}
           style={[
-            styles.bidOption, 
-            bidAmount === num && styles.bidOptionActive,
+            GameStyles.bidOption, 
+            bidAmount === num && GameStyles.bidOptionActive,
             isModal && {width: 40, height: 40, borderRadius: 20} 
           ]}
           onPress={() => {
@@ -493,7 +469,7 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
           }}
           activeOpacity={0.8}
         >
-          <Text style={[styles.bidOptionText, bidAmount === num && { color: '#000' }, isModal && {fontSize: 14}]}>{num}</Text>
+          <Text style={[GameStyles.bidOptionText, bidAmount === num && { color: '#000' }, isModal && {fontSize: 14}]}>{num}</Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -501,38 +477,38 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
 );
 
 const ScoringPhase = ({ callingTeam, tricksTaken, setTricksTaken, preview, isModal = false }: any) => (
-  <View style={[styles.scoringContainer, isModal && {gap: 12, flexDirection: 'row'}]}>
-     <View style={[styles.counterCard, isModal && {padding: 12, flex: 1}]}>
-       <Text style={[styles.counterLabel, isModal && {fontSize: 10, marginBottom: 8, textAlign: 'center'}]}>{isModal ? `Tricks (${callingTeam})` : `Tricks Taken by Team ${callingTeam}`}</Text>
-       <View style={[styles.counterRow, isModal && {gap: 8, justifyContent: 'center'}]}>
-          <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.max(0, p - 1))} style={[styles.counterBtn, isModal && {width: 32, height: 32, borderRadius: 16}]}>
-            <Text style={[styles.counterBtnText, isModal && {fontSize: 20, marginTop: -2}]}>-</Text>
+  <View style={[GameStyles.scoringContainer, isModal && {gap: 12, flexDirection: 'row'}]}>
+     <View style={[GameStyles.counterCard, isModal && {padding: 12, flex: 1}]}>
+       <Text style={[GameStyles.counterLabel, isModal && {fontSize: 10, marginBottom: 8, textAlign: 'center'}]}>{isModal ? `Tricks (${callingTeam})` : `Tricks Taken by Team ${callingTeam}`}</Text>
+       <View style={[GameStyles.counterRow, isModal && {gap: 8, justifyContent: 'center'}]}>
+          <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.max(0, p - 1))} style={[GameStyles.counterBtn, isModal && {width: 32, height: 32, borderRadius: 16}]}>
+            <Text style={[GameStyles.counterBtnText, isModal && {fontSize: 20, marginTop: -2}]}>-</Text>
           </TouchableOpacity>
-          <Text style={[styles.counterValue, isModal && {fontSize: 28, minWidth: 30}]}>{tricksTaken}</Text>
-          <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.min(13, p + 1))} style={[styles.counterBtn, isModal && {width: 32, height: 32, borderRadius: 16}]}>
-            <Text style={[styles.counterBtnText, isModal && {fontSize: 20, marginTop: -2}]}>+</Text>
+          <Text style={[GameStyles.counterValue, isModal && {fontSize: 28, minWidth: 30}]}>{tricksTaken}</Text>
+          <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.min(13, p + 1))} style={[GameStyles.counterBtn, isModal && {width: 32, height: 32, borderRadius: 16}]}>
+            <Text style={[GameStyles.counterBtnText, isModal && {fontSize: 20, marginTop: -2}]}>+</Text>
           </TouchableOpacity>
        </View>
      </View>
 
      {preview && (
-       <View style={[styles.previewCard, preview.success ? styles.previewSuccess : styles.previewFail, isModal && {padding: 12, flex: 1}]}>
+       <View style={[GameStyles.previewCard, preview.success ? GameStyles.previewSuccess : GameStyles.previewFail, isModal && {padding: 12, flex: 1}]}>
           <View style={GlobalStyles.rowBetween}>
              <View style={GlobalStyles.row}>
                 {preview.success ? <Check size={isModal ? 16 : 24} color={Colors.primary} /> : <X size={isModal ? 16 : 24} color={Colors.danger} />}
-                <Text style={[styles.previewTitle, isModal && {fontSize: 14, marginLeft: 6}]}>{preview.success ? "Success" : "Failed"}</Text>
+                <Text style={[GameStyles.previewTitle, isModal && {fontSize: 14, marginLeft: 6}]}>{preview.success ? "Success" : "Failed"}</Text>
              </View>
           </View>
-          <View style={[styles.divider, isModal && {marginVertical: 8}]} />
+          <View style={[GameStyles.divider, isModal && {marginVertical: 8}]} />
           <View style={GlobalStyles.rowBetween}>
-             <Text style={[styles.previewSub, isModal && {fontSize: 10}]}>Team A</Text>
-             <Text style={[styles.previewSubScore, { color: preview.pointsA >= 0 ? Colors.text : Colors.danger }, isModal && {fontSize: 14}]}>
+             <Text style={[GameStyles.previewSub, isModal && {fontSize: 10}]}>Team A</Text>
+             <Text style={[GameStyles.previewSubScore, { color: preview.pointsA >= 0 ? Colors.text : Colors.danger }, isModal && {fontSize: 14}]}>
                {preview.pointsA > 0 ? '+' : ''}{preview.pointsA}
              </Text>
           </View>
           <View style={[GlobalStyles.rowBetween, { marginTop: isModal ? 4 : 8 }]}>
-             <Text style={[styles.previewSub, isModal && {fontSize: 10}]}>Team B</Text>
-             <Text style={[styles.previewSubScore, { color: preview.pointsB >= 0 ? Colors.text : Colors.danger }, isModal && {fontSize: 14}]}>
+             <Text style={[GameStyles.previewSub, isModal && {fontSize: 10}]}>Team B</Text>
+             <Text style={[GameStyles.previewSubScore, { color: preview.pointsB >= 0 ? Colors.text : Colors.danger }, isModal && {fontSize: 14}]}>
                {preview.pointsB > 0 ? '+' : ''}{preview.pointsB}
              </Text>
           </View>
@@ -540,45 +516,3 @@ const ScoringPhase = ({ callingTeam, tricksTaken, setTricksTaken, preview, isMod
      )}
   </View>
 );
-
-const styles = StyleSheet.create({
-  statusRowFixed: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.l, paddingVertical: Spacing.m, backgroundColor: Colors.background, borderBottomWidth: 1, borderBottomColor: Colors.border, zIndex: 5 },
-  phaseTitle: { color: Colors.text, fontSize: 18, fontWeight: 'bold' },
-  sectionLabel: { color: Colors.textMuted, fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: Spacing.m },
-  grid: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  playerOption: { flex: 1, backgroundColor: Colors.surface, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
-  playerOptionActive: { borderColor: Colors.primary, backgroundColor: 'rgba(15, 157, 88, 0.1)' },
-  teamNameBig: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 4 },
-  teamPlayers: { color: Colors.textMuted, fontSize: 12, textAlign: 'center' },
-  bidGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
-  bidOption: { width: 50, height: 50, borderRadius: 25, backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border },
-  bidOptionActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  bidOptionText: { color: Colors.text, fontWeight: 'bold', fontSize: 18 },
-  scoringContainer: { gap: 20 },
-  counterCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
-  counterLabel: { color: Colors.textMuted, fontSize: 14, textTransform: 'uppercase', fontWeight: 'bold', marginBottom: 20 },
-  counterRow: { flexDirection: 'row', alignItems: 'center', gap: 32 },
-  counterBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center' },
-  counterBtnText: { color: Colors.text, fontSize: 32, marginTop: -4 },
-  counterValue: { color: Colors.text, fontSize: 56, fontWeight: '800', fontVariant: ['tabular-nums'], minWidth: 80, textAlign: 'center' },
-  previewCard: { borderRadius: 16, padding: 16, borderWidth: 1 },
-  previewSuccess: { backgroundColor: 'rgba(15, 157, 88, 0.1)', borderColor: 'rgba(15, 157, 88, 0.3)' },
-  previewFail: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: 'rgba(255, 82, 82, 0.3)' },
-  previewTitle: { color: Colors.text, fontSize: 18, fontWeight: 'bold', marginLeft: 12 },
-  previewSub: { color: Colors.textMuted, fontSize: 14, fontWeight: '600' },
-  previewSubScore: { color: Colors.text, fontSize: 18, fontWeight: 'bold' },
-  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 12 },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.l, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
-  disabledButton: { backgroundColor: Colors.surfaceLight, shadowOpacity: 0, elevation: 0 },
-  badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, gap: 4 },
-  badgeSuccess: { backgroundColor: 'rgba(15, 157, 88, 0.1)', borderColor: Colors.primary },
-  badgeError: { backgroundColor: 'rgba(255, 82, 82, 0.1)', borderColor: Colors.danger },
-  badgeText: { fontSize: 12, fontWeight: 'bold' },
-  
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', padding: 10 },
-  modalContent: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, paddingBottom: 30 },
-  modalTitle: { color: Colors.text, fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, paddingTop: 20, borderTopWidth: 1, borderTopColor: Colors.border },
-  modalCancel: { padding: 12 },
-  modalSave: { backgroundColor: Colors.primary, padding: 12, borderRadius: 8 },
-});
