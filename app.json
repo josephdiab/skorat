@@ -6,12 +6,17 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
+
+    "newArchEnabled": false,
+
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#111111"
     },
+
     "ios": {
+      "newArchEnabled": false,
       "supportsTablet": true,
       "bundleIdentifier": "com.josephdiab.skorat",
       "buildNumber": "1",
@@ -19,7 +24,9 @@
         "ITSAppUsesNonExemptEncryption": false
       }
     },
+
     "android": {
+      "newArchEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/splash.png",
         "backgroundColor": "#111111"
@@ -27,12 +34,15 @@
       "package": "com.josephdiab.skorat",
       "versionCode": 1
     },
+
     "web": {
       "favicon": "./assets/images/favicon.png"
     },
+
     "plugins": [
       "expo-router"
     ],
+
     "extra": {
       "eas": {
         "projectId": "e94dff54-1313-4f60-8845-b4de6cc5b92f"
