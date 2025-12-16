@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { GameState, Player, UserProfile } from "../constants/types";
 import { GameStorage } from "../services/game_storage";
 import { Logger } from "../services/logger";
+import { RoundValidator } from "../services/round_validator";
 
 /**
  * useGameCore
@@ -62,6 +63,7 @@ export function useGameCore(
 
           // THE STRICT SCHEMA YOU REQUESTED
           const newGame: GameState = {
+            schemaVersion: 1, // <--- ADDED FOR FUTURE PROOFING
             id: newId,
             instanceId: newId,
             gameType: gameType,
@@ -107,7 +109,7 @@ export function useGameCore(
   };
 
   // --- 3. AUTO-SAVE EFFECT ---
-  useEffect(() => {
+useEffect(() => {
     if (!isLoaded || !gameState) return;
     
     if (isFirstLoad.current) {
@@ -116,12 +118,29 @@ export function useGameCore(
     }
 
     const performSave = async () => {
-      // Log critical status changes
-      if (gameState.status === 'completed') {
-        Logger.info('GAME_ACTION', 'Game Completed', { winners: gameState.players.filter(p => p.isWinner) });
-      }
-      
       await GameStorage.save(gameState);
+
+      // --- DEV ONLY: VERIFICATION SUITE ---
+      if (__DEV__) {
+        // 1. Validate the structure immediately
+        const errors = RoundValidator.validateLastRound(gameState);
+        if (errors.length > 0) {
+          Logger.error("DATA_INTEGRITY", "❌ Save Corrupted:", errors);
+        } else {
+          Logger.info("DATA_INTEGRITY", "✅ Schema Valid");
+        }
+
+        // 2. Verify Persistence (Readback)
+        const reloaded = await GameStorage.get(gameState.instanceId);
+        const lastRoundSaved = reloaded?.history?.[reloaded.history.length - 1];
+        
+        if (lastRoundSaved && reloaded?.history.length === gameState.history.length) {
+           Logger.info("STORAGE_VERIFY", `✅ Disk Write Confirmed: Round ${lastRoundSaved.roundNum}`);
+        } else {
+           Logger.error("STORAGE_VERIFY", "❌ Disk Readback Mismatch!");
+        }
+      }
+      // ------------------------------------
     };
 
     performSave();

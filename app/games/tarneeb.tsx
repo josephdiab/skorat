@@ -16,8 +16,9 @@ import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { GameStyles } from "../../constants/game_styles";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-import { useGameCore } from "../../hooks/useGameCore"; // <--- IMPORT THE HOOK
-import { Logger } from "../../services/logger"; // <--- IMPORT LOGGER
+import { GameRoundDetails, Player, RoundHistory } from "../../constants/types";
+import { useGameCore } from "../../hooks/useGameCore";
+import { Logger } from "../../services/logger";
 
 type Phase = 'bidding' | 'scoring' | 'gameover';
 
@@ -27,7 +28,7 @@ export default function TarneebScreen() {
   // 1. USE THE GENERIC HOOK
   const { gameState, isLoaded, updateState } = useGameCore('tarneeb', 'TARNEEB', 31, true);
 
-  // 2. EXTRACT DATA SAFELY (Default values prevent crashes during loading)
+  // 2. EXTRACT DATA SAFELY
   const players = gameState?.players || [];
   const history = gameState?.history || [];
   const scoreLimit = gameState?.scoreLimit || 31;
@@ -48,12 +49,11 @@ export default function TarneebScreen() {
     tricksTaken: number;
   } | null>(null);
 
-  // Sync Phase
   useEffect(() => {
     if (status === 'completed') setPhase('gameover');
   }, [status]);
 
-  // Helper for Team Names (Calculated safely)
+  // Helper for Team Names
   const teamAName = players.length >= 2 
     ? `${players[0].name.split(' ')[0]} & ${players[1].name.split(' ')[0]}` 
     : "Team A";
@@ -61,27 +61,32 @@ export default function TarneebScreen() {
     ? `${players[2].name.split(' ')[0]} & ${players[3].name.split(' ')[0]}` 
     : "Team B";
   
-  // Memoize team names object to ensure stable reference
   const teamNames = useMemo(() => ({ A: teamAName, B: teamBName }), [teamAName, teamBName]);
 
-  // --- VIEW MODEL (Must be before any 'return' statement) ---
-  const scoreboardPlayers = useMemo(() => {
-    if (players.length < 4) return [];
-    return [
-      { id: 'A', name: teamAName, totalScore: players[0].totalScore, isDanger: players[0].isDanger, profileId: 'team-a' },
-      { id: 'B', name: teamBName, totalScore: players[2].totalScore, isDanger: players[2].isDanger, profileId: 'team-b' }
-    ];
-  }, [players, teamAName, teamBName]);
+  // --- VIEW MODEL ---
+  // The Scoreboard UI expects players with IDs 'A' and 'B' for the columns.
+  const scoreboardPlayers = useMemo<Player[]>(() => {
+  if (players.length < 4) return [];
+  return [
+    { id: "A", name: teamAName, totalScore: players[0].totalScore, isDanger: players[0].isDanger, profileId: "A", isWinner: false },
+    { id: "B", name: teamBName, totalScore: players[2].totalScore, isDanger: players[2].isDanger, profileId: "B", isWinner: false },
+  ];
+}, [players, teamAName, teamBName]);
 
-  const scoreboardHistory = useMemo(() => {
-    return history.map(h => ({
-      roundNum: h.roundNum,
-      playerDetails: {
-        'A': h.playerDetails['1'] || {},
-        'B': h.playerDetails['3'] || {}
-      }
-    }));
-  }, [history]);
+const scoreboardHistory = useMemo<RoundHistory[]>(() => {
+  const p0Id = players[0]?.profileId;
+  const p2Id = players[2]?.profileId;
+
+  return history.map((h) => ({
+    roundNum: h.roundNum,
+    timestamp: h.timestamp,
+    playerDetails: {
+      A: (p0Id ? h.playerDetails[p0Id] : undefined) as GameRoundDetails,
+      B: (p2Id ? h.playerDetails[p2Id] : undefined) as GameRoundDetails,
+    },
+  }));
+}, [history, players]);
+
 
   // --- LOADING GUARD ---
   if (!isLoaded || !gameState) return <SafeAreaView style={GlobalStyles.container} />;
@@ -104,17 +109,37 @@ export default function TarneebScreen() {
     const result = calculateRoundScores(callingTeam, bidAmount, tricksTaken);
     if (!result) return;
 
-    const roundDetails: Record<string, any> = {};
+    // Use strictly typed Record
+    const roundDetails: Record<string, GameRoundDetails> = {};
+    
     let updatedPlayers = players.map((p, index) => {
       const isTeamA = index < 2;
       const pointsChange = isTeamA ? result.pointsA : result.pointsB;
       const isMyTeamCalling = (isTeamA && callingTeam === 'A') || (!isTeamA && callingTeam === 'B');
-      roundDetails[p.id] = { score: pointsChange, isCaller: isMyTeamCalling, bid: bidAmount, tricks: tricksTaken };
+      
+      // Determine partner (0<->1, 2<->3)
+      const partnerIdx = index < 2 ? (index === 0 ? 1 : 0) : (index === 2 ? 3 : 2);
+      const partnerId = players[partnerIdx]?.profileId;
+
+      // KEYING FIX: Use p.profileId
+      roundDetails[p.profileId] = { 
+        kind: 'tarneeb',       
+        bid: bidAmount,
+        tricksTaken: tricksTaken,
+        isCallingTeamMember: isMyTeamCalling,
+        score: pointsChange,
+        partnerProfileId: partnerId
+      };
+      
       const newTotal = p.totalScore + pointsChange;
       return { ...p, totalScore: newTotal, isDanger: newTotal < 0, isWinner: false };
     });
 
-    const newHistory = [...history, { roundNum: history.length + 1, playerDetails: roundDetails }];
+    const newHistory = [...history, { 
+        roundNum: history.length + 1, 
+        timestamp: new Date().toISOString(),
+        playerDetails: roundDetails 
+    }];
 
     const scoreA = updatedPlayers[0].totalScore;
     const scoreB = updatedPlayers[2].totalScore;
@@ -157,13 +182,29 @@ export default function TarneebScreen() {
 
   const startEditingRound = (index: number) => {
     const round = history[index];
-    const detailsA = round.playerDetails['1'] as any; 
-    const detailsB = round.playerDetails['3'] as any;
+    
+    // READING FIX: Use profileId to find data
+    const p0Id = players[0]?.profileId;
+    const p2Id = players[2]?.profileId;
+
+    // Use Type Guard to ensure we are reading Tarneeb data
+    const detailsA = round.playerDetails[p0Id];
+    const detailsB = round.playerDetails[p2Id];
+
     let caller: 'A' | 'B' = 'A';
     let bid = 7;
     let tricks = 7;
-    if (detailsA?.isCaller) { caller = 'A'; bid = detailsA.bid; tricks = detailsA.tricks; }
-    else if (detailsB?.isCaller) { caller = 'B'; bid = detailsB.bid; tricks = detailsB.tricks; }
+    
+    // Check kind just to be safe, though this component only runs for Tarneeb
+    if (detailsA?.kind === 'tarneeb' && detailsA.isCallingTeamMember) { 
+        caller = 'A'; 
+        bid = detailsA.bid; 
+        tricks = detailsA.tricksTaken; 
+    } else if (detailsB?.kind === 'tarneeb' && detailsB.isCallingTeamMember) { 
+        caller = 'B'; 
+        bid = detailsB.bid; 
+        tricks = detailsB.tricksTaken; 
+    }
     setEditingRound({ index, callingTeam: caller, bidAmount: bid, tricksTaken: tricks });
   };
 
@@ -173,17 +214,43 @@ export default function TarneebScreen() {
     if (!result) return;
     
     const newHistory = [...history];
-    const roundDetails: Record<string, any> = {};
+    const roundDetails: Record<string, GameRoundDetails> = {};
+    
     players.forEach((p, index) => {
       const isTeamA = index < 2;
       const pointsChange = isTeamA ? result.pointsA : result.pointsB;
       const isMyTeamCalling = (isTeamA && editingRound.callingTeam === 'A') || (!isTeamA && editingRound.callingTeam === 'B');
-      roundDetails[p.id] = { score: pointsChange, isCaller: isMyTeamCalling, bid: editingRound.bidAmount, tricks: editingRound.tricksTaken };
+      
+      const partnerIdx = index < 2 ? (index === 0 ? 1 : 0) : (index === 2 ? 3 : 2);
+      const partnerId = players[partnerIdx]?.profileId;
+
+      // KEYING FIX: Use p.profileId
+      roundDetails[p.profileId] = { 
+        kind: 'tarneeb',
+        score: pointsChange, 
+        isCallingTeamMember: isMyTeamCalling, 
+        bid: editingRound.bidAmount, 
+        tricksTaken: editingRound.tricksTaken,
+        partnerProfileId: partnerId
+      };
     });
-    newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
+    
+    const originalRound = newHistory[editingRound.index];
+    newHistory[editingRound.index] = { 
+        ...originalRound, 
+        playerDetails: roundDetails 
+    };
 
     let recalculatedPlayers = players.map(p => {
-      const totalScore = newHistory.reduce((sum, round) => sum + (round.playerDetails[p.id]?.score || 0), 0);
+      const totalScore = newHistory.reduce((sum, round) => {
+          // KEYING FIX: Read by profileId
+          const details = round.playerDetails[p.profileId];
+          // Type Guard for safety
+          if (details && details.kind === 'tarneeb') {
+             return sum + details.score;
+          }
+          return sum;
+      }, 0);
       return { ...p, totalScore, isDanger: totalScore < 0, isWinner: false };
     });
 
@@ -381,7 +448,7 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
           ]}
           onPress={() => {
             setBidAmount(num);
-            if (setTricksTaken) setTricksTaken(num); // Auto-set
+            if (setTricksTaken) setTricksTaken(num); 
           }}
           activeOpacity={0.8}
         >

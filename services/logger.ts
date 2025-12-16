@@ -1,6 +1,6 @@
 import { ENABLE_LOGS } from "../constants/config";
 
-type LogCategory = 'GAME_LIFECYCLE' | 'GAME_ACTION' | 'STORAGE' | 'ERROR';
+type LogCategory = 'GAME_LIFECYCLE' | 'GAME_ACTION' | 'STORAGE' | 'ERROR' | "SANITY_STATS" | "DATA_INTEGRITY" | "STORAGE_VERIFY";
 
 export const Logger = {
   info: (category: LogCategory, message: string, data?: any) => {
