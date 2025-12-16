@@ -1,7 +1,7 @@
 import { useKeepAwake } from 'expo-keep-awake';
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { ThumbsDown, ThumbsUp } from "lucide-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -15,10 +15,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
-import { GameStyles } from "../../constants/game_styles"; // <--- NEW IMPORT
+import { GameStyles } from "../../constants/game_styles";
 import { Colors, GlobalStyles } from "../../constants/theme";
-import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
-import { GameStorage } from "../../services/game_storage";
+import { Player } from "../../constants/types";
+import { useGameCore } from "../../hooks/useGameCore"; // <--- NEW HOOK
+import { Logger } from "../../services/logger"; // <--- NEW LOGGER
 
 // --- 400 Game Logic Helpers ---
 const calculatePoints = (bid: number, currentScore: number) => {
@@ -41,27 +42,16 @@ const getMinBidForPlayer = (score: number) => {
 export default function FourHundredScreen() {
   useKeepAwake();
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const instanceId = (params.instanceId as string) || (params.id as string);
-  const isFirstLoad = useRef(true);
-  
-  // --- State ---
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [gameId, setGameId] = useState<string>("");
-  const [lastPlayed, setLastPlayed] = useState<string>(""); 
 
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [history, setHistory] = useState<RoundHistory[]>([]);
-  const [roundNum, setRoundNum] = useState(1);
-  const [isExpanded, setIsExpanded] = useState(false);
-  
-  const [mode, setMode] = useState<'solo' | 'teams'>('teams');
-  const [gameName, setGameName] = useState("400");
-  const [scoreLimit, setScoreLimit] = useState(41); 
-  const [gameStatus, setGameStatus] = useState<'active' | 'completed'>('active');
+  // 1. USE THE GENERIC HOOK
+  // 400 uses individual scoreboards (isTeamScoreboard = false) even if played in teams
+  const { gameState, isLoaded, updateState } = useGameCore('400', '400', 41, false);
+
+  // --- Local UI State ---
   const [phase, setPhase] = useState<'bidding' | 'scoring' | 'gameover'>('bidding');
   const [bids, setBids] = useState<Record<string, number>>({});
   const [results, setResults] = useState<Record<string, boolean>>({}); 
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const [editingRound, setEditingRound] = useState<{
     index: number;
@@ -69,81 +59,33 @@ export default function FourHundredScreen() {
     results: Record<string, boolean>;
   } | null>(null);
   
-  // --- LOAD DATA ---
+  // Sync phase with loaded game status
   useEffect(() => {
-    const loadGameData = async () => {
-      if (instanceId) {
-        const savedGame = await GameStorage.get(instanceId);
-        if (savedGame) {
-          setGameId(savedGame.id);
-          setPlayers(savedGame.players);
-          setHistory(savedGame.history);
-          setRoundNum(savedGame.history.length + 1);
-          setMode(savedGame.mode);
-          setGameName(savedGame.title);
-          setScoreLimit(savedGame.scoreLimit || 41);
-          setGameStatus(savedGame.status);
-          if (savedGame.status === 'completed') setPhase('gameover');
-          setLastPlayed(savedGame.lastPlayed); 
-          setIsLoaded(true);
-          return;
-        }
-      }
+    if (gameState?.status === 'completed') setPhase('gameover');
+  }, [gameState?.status]);
 
-      if (params.playerProfiles) {
-        try {
-          const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
-          const initialPlayers: Player[] = profiles.map((p, index) => ({
-            id: (index + 1).toString(),
-            profileId: p.id,
-            name: p.name,
-            totalScore: 0, 
-            isDanger: false
-          }));
-
-          const newId = Date.now().toString();
-          const now = new Date().toISOString();
-          setGameId(newId);
-          setPlayers(initialPlayers);
-          setMode((params.mode as 'solo' | 'teams') || 'teams');
-          setGameName((params.gameName as string) || "400");
-          setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 41);
-          setLastPlayed(now);
-
-          const initialGame: GameState = {
-            id: newId,
-            instanceId: newId,
-            gameType: '400',
-            status: 'active',
-            mode: (params.mode as 'solo' | 'teams') || 'teams',
-            title: (params.gameName as string) || "400",
-            roundLabel: 'Round 1',
-            lastPlayed: now,
-            players: initialPlayers,
-            history: [],
-            scoreLimit: params.scoreLimit ? Number(params.scoreLimit) : 41,
-            isTeamScoreboard: false,
-          };
-          await GameStorage.save(initialGame);
-          setIsLoaded(true);
-        } catch (e) { console.log(e); }
-      }
-    };
-    loadGameData();
-  }, [instanceId]);
-
+  // Initialize bids when round changes or game loads
   useEffect(() => {
-    if (!isLoaded || players.length === 0) return;
-    const initialBids: Record<string, number> = {};
-    const initialResults: Record<string, boolean> = {};
-    players.forEach(p => {
-      initialBids[p.id] = getMinBidForPlayer(p.totalScore);
-      initialResults[p.id] = true;
-    });
-    setBids(initialBids);
-    setResults(initialResults);
-  }, [roundNum, isLoaded, players.length]);
+    if (!isLoaded || !gameState) return;
+    // Only reset if we are not editing
+    if (gameState.players.length > 0) {
+        const initialBids: Record<string, number> = {};
+        const initialResults: Record<string, boolean> = {};
+        gameState.players.forEach(p => {
+          initialBids[p.id] = getMinBidForPlayer(p.totalScore);
+          initialResults[p.id] = true;
+        });
+        setBids(initialBids);
+        setResults(initialResults);
+    }
+  }, [gameState?.history.length, isLoaded]);
 
+  if (!isLoaded || !gameState) return <SafeAreaView style={GlobalStyles.container} />;
+
+  // Destructure for easier access
+  const { players, history, scoreLimit, title, status, mode } = gameState;
+
+  // --- LOGIC ---
   const currentTotalBids = Object.values(bids).reduce((a, b) => a + b, 0);
   const getTableMinTotal = () => {
     if (players.length === 0) return 11;
@@ -180,15 +122,18 @@ export default function FourHundredScreen() {
       return { ...p, totalScore: newTotal, isDanger: newTotal < 0 };
     });
 
-    setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
+    const newHistory = [...history, { roundNum: history.length + 1, playerDetails: roundDetails }];
 
+    // Win Condition Logic
     const p0 = updatedPlayers[0];
     const p1 = updatedPlayers[1];
     const p2 = updatedPlayers[2];
     const p3 = updatedPlayers[3];
 
-    const teamA_Qualified = (p0.totalScore >= scoreLimit && p1.totalScore > 0) || (p1.totalScore >= scoreLimit && p0.totalScore > 0);
-    const teamB_Qualified = (p2.totalScore >= scoreLimit && p3.totalScore > 0) || (p3.totalScore >= scoreLimit && p2.totalScore > 0);
+    // Assuming standard 4-player team logic for 400
+    const limit = scoreLimit || 41;
+    const teamA_Qualified = (p0.totalScore >= limit && p1.totalScore > 0) || (p1.totalScore >= limit && p0.totalScore > 0);
+    const teamB_Qualified = (p2.totalScore >= limit && p3.totalScore > 0) || (p3.totalScore >= limit && p2.totalScore > 0);
 
     let winningTeam: 'A' | 'B' | null = null;
     if (teamA_Qualified && !teamB_Qualified) winningTeam = 'A';
@@ -200,20 +145,19 @@ export default function FourHundredScreen() {
         else if (maxB > maxA) winningTeam = 'B';
     }
 
+    // UPDATE VIA HOOK
     if (winningTeam) {
         updatedPlayers = updatedPlayers.map((player, idx) => {
             const isTeamA = (idx === 0 || idx === 1);
             return { ...player, isWinner: winningTeam === 'A' ? isTeamA : !isTeamA };
         });
-        setPlayers(updatedPlayers);
-        setGameStatus('completed');
-        setPhase('gameover');
+        Logger.info('GAME_ACTION', '400 Match Won', { winningTeam });
+        updateState({ players: updatedPlayers, history: newHistory, status: 'completed' });
     } else {
-        setPlayers(updatedPlayers);
-        setRoundNum(prev => prev + 1);
+        Logger.info('GAME_ACTION', `Round ${newHistory.length} Committed`, { bids, results });
+        updateState({ players: updatedPlayers, history: newHistory, roundLabel: `Round ${newHistory.length + 1}` });
         setPhase('bidding');
     }
-    setLastPlayed(new Date().toISOString()); 
   };
 
   const handleRematch = () => {
@@ -222,8 +166,8 @@ export default function FourHundredScreen() {
       pathname: "/games/400",
       params: {
         playerProfiles: JSON.stringify(profileParams),
-        gameName: gameName,
-        scoreLimit: scoreLimit.toString(),
+        gameName: title,
+        scoreLimit: scoreLimit?.toString(),
         mode: mode
       }
     });
@@ -265,33 +209,11 @@ export default function FourHundredScreen() {
     });
 
     const finalPlayers = tempPlayers.map(p => ({ ...p, isDanger: p.totalScore < 0 }));
-    setHistory(finalHistory);
-    setPlayers(finalPlayers);
+    Logger.info('GAME_ACTION', `Round ${editingRound.index + 1} Edited`);
+    
+    updateState({ players: finalPlayers, history: finalHistory });
     setEditingRound(null);
-    setLastPlayed(new Date().toISOString()); 
   };
-
-  useEffect(() => {
-    if (!isLoaded || !gameId || !lastPlayed) return;
-    if (isFirstLoad.current) { isFirstLoad.current = false; return; }
-    const gameState: GameState = {
-      id: gameId,
-      instanceId: gameId,
-      gameType: '400',
-      status: gameStatus, 
-      mode: 'teams',
-      title: gameName, 
-      roundLabel: `Round ${roundNum}`, 
-      lastPlayed, 
-      players,
-      history,
-      scoreLimit: scoreLimit, 
-      isTeamScoreboard: false 
-    };
-    GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded, gameId, gameStatus, lastPlayed]);
-
-  if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   const orderedPlayersForUI = players.length === 4 ? [players[0], players[2], players[1], players[3]] : players;
   const winners = players.filter(p => p.isWinner);
@@ -301,8 +223,8 @@ export default function FourHundredScreen() {
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
       <GameHeader 
-        title={gameName.toUpperCase()} 
-        subtitle={gameStatus === 'completed' ? "COMPLETED" : `Score Limit: ${scoreLimit}`}
+        title={title.toUpperCase()} 
+        subtitle={status === 'completed' ? "COMPLETED" : `Score Limit: ${scoreLimit}`}
         onBack={() => router.dismissAll()} 
       />
       <ScoreboardHistory 
@@ -372,51 +294,52 @@ export default function FourHundredScreen() {
         <GameOverScreen winners={winnerText} onRematch={handleRematch} />
       )}
 
+      {/* Edit Modal */}
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
-           <View style={GameStyles.modalOverlay}>
-             <View style={GameStyles.modalContent}>
-               <Text style={GameStyles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
-               <ScrollView style={{ maxHeight: 400 }}>
-                 <View style={{ gap: 12 }}>
-                   {orderedPlayersForUI.map(p => {
-                     const bid = editingRound.bids[p.id];
-                     const passed = editingRound.results[p.id];
-                     return (
-                       <View key={p.id} style={GameStyles.editRow}>
-                          <Text style={GameStyles.editName}>{p.name}</Text>
-                          <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
-                             <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.max(2, bid-1)}}) : null)}>
-                                <Text style={GameStyles.editBtn}>-</Text>
-                             </TouchableOpacity>
-                             <Text style={GameStyles.editVal}>{bid}</Text>
-                             <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.min(13, bid+1)}}) : null)}>
-                                <Text style={GameStyles.editBtn}>+</Text>
-                             </TouchableOpacity>
-                          </View>
-                          <TouchableOpacity 
-                            style={[GameStyles.editToggle, passed ? GameStyles.wonActive : GameStyles.brokeActive]}
-                            onPress={() => setEditingRound(prev => prev ? ({...prev, results: {...prev.results, [p.id]: !passed}}) : null)}
-                          >
-                            <Text style={{color: '#fff', fontSize: 12, fontWeight: 'bold'}}>
-                              {passed ? "WON" : "BROKE"}
-                            </Text>
-                          </TouchableOpacity>
-                       </View>
-                     );
-                   })}
-                 </View>
-               </ScrollView>
-               <View style={GameStyles.modalFooter}>
-                 <TouchableOpacity onPress={() => setEditingRound(null)} style={GameStyles.modalCancel}>
-                   <Text style={{color: Colors.textMuted}}>Cancel</Text>
-                 </TouchableOpacity>
-                 <TouchableOpacity onPress={saveEditedRound} style={GameStyles.modalSave}>
-                   <Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text>
-                 </TouchableOpacity>
-               </View>
-             </View>
-           </View>
+            <View style={GameStyles.modalOverlay}>
+              <View style={GameStyles.modalContent}>
+                <Text style={GameStyles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
+                <ScrollView style={{ maxHeight: 400 }}>
+                  <View style={{ gap: 12 }}>
+                    {orderedPlayersForUI.map(p => {
+                      const bid = editingRound.bids[p.id];
+                      const passed = editingRound.results[p.id];
+                      return (
+                        <View key={p.id} style={GameStyles.editRow}>
+                           <Text style={GameStyles.editName}>{p.name}</Text>
+                           <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
+                              <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.max(2, bid-1)}}) : null)}>
+                                 <Text style={GameStyles.editBtn}>-</Text>
+                              </TouchableOpacity>
+                              <Text style={GameStyles.editVal}>{bid}</Text>
+                              <TouchableOpacity onPress={() => setEditingRound(prev => prev ? ({...prev, bids: {...prev.bids, [p.id]: Math.min(13, bid+1)}}) : null)}>
+                                 <Text style={GameStyles.editBtn}>+</Text>
+                              </TouchableOpacity>
+                           </View>
+                           <TouchableOpacity 
+                             style={[GameStyles.editToggle, passed ? GameStyles.wonActive : GameStyles.brokeActive]}
+                             onPress={() => setEditingRound(prev => prev ? ({...prev, results: {...prev.results, [p.id]: !passed}}) : null)}
+                           >
+                             <Text style={{color: '#fff', fontSize: 12, fontWeight: 'bold'}}>
+                               {passed ? "WON" : "BROKE"}
+                             </Text>
+                           </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+                <View style={GameStyles.modalFooter}>
+                  <TouchableOpacity onPress={() => setEditingRound(null)} style={GameStyles.modalCancel}>
+                    <Text style={{color: Colors.textMuted}}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={saveEditedRound} style={GameStyles.modalSave}>
+                    <Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
         </Modal>
       )}
     </SafeAreaView>

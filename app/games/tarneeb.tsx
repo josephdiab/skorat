@@ -1,6 +1,6 @@
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { Check, Crown, X } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -14,37 +14,32 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { GameHeader } from "../../components/game_header";
 import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
-import { GameStyles } from "../../constants/game_styles"; // <--- NEW IMPORT
+import { GameStyles } from "../../constants/game_styles";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
-import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
-import { GameStorage } from "../../services/game_storage";
+import { useGameCore } from "../../hooks/useGameCore"; // <--- IMPORT THE HOOK
+import { Logger } from "../../services/logger"; // <--- IMPORT LOGGER
 
 type Phase = 'bidding' | 'scoring' | 'gameover';
 
 export default function TarneebScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const instanceId = (params.instanceId as string) || (params.id as string);
-  const isFirstLoad = useRef(true);
 
-  // --- State ---
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [gameId, setGameId] = useState<string>("");
-  const [lastPlayed, setLastPlayed] = useState<string>(""); 
+  // 1. USE THE GENERIC HOOK
+  const { gameState, isLoaded, updateState } = useGameCore('tarneeb', 'TARNEEB', 31, true);
 
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [history, setHistory] = useState<RoundHistory[]>([]);
-  const [roundNum, setRoundNum] = useState(1);
-  const [isExpanded, setIsExpanded] = useState(false);
-  
-  const [gameName, setGameName] = useState("TARNEEB");
-  const [scoreLimit, setScoreLimit] = useState(31);
-  const [gameStatus, setGameStatus] = useState<'active' | 'completed'>('active');
+  // 2. EXTRACT DATA SAFELY (Default values prevent crashes during loading)
+  const players = gameState?.players || [];
+  const history = gameState?.history || [];
+  const scoreLimit = gameState?.scoreLimit || 31;
+  const title = gameState?.title || "TARNEEB";
+  const status = gameState?.status || 'active';
+
+  // 3. LOCAL STATE
   const [phase, setPhase] = useState<Phase>('bidding');
-  
   const [callingTeam, setCallingTeam] = useState<'A' | 'B' | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(7);
   const [tricksTaken, setTricksTaken] = useState<number>(7);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const [editingRound, setEditingRound] = useState<{
     index: number;
@@ -53,16 +48,23 @@ export default function TarneebScreen() {
     tricksTaken: number;
   } | null>(null);
 
-  // Helper for Team Names
+  // Sync Phase
+  useEffect(() => {
+    if (status === 'completed') setPhase('gameover');
+  }, [status]);
+
+  // Helper for Team Names (Calculated safely)
   const teamAName = players.length >= 2 
     ? `${players[0].name.split(' ')[0]} & ${players[1].name.split(' ')[0]}` 
     : "Team A";
   const teamBName = players.length >= 4 
     ? `${players[2].name.split(' ')[0]} & ${players[3].name.split(' ')[0]}` 
     : "Team B";
-  const teamNames = { A: teamAName, B: teamBName };
+  
+  // Memoize team names object to ensure stable reference
+  const teamNames = useMemo(() => ({ A: teamAName, B: teamBName }), [teamAName, teamBName]);
 
-  // --- VIEW MODEL ---
+  // --- VIEW MODEL (Must be before any 'return' statement) ---
   const scoreboardPlayers = useMemo(() => {
     if (players.length < 4) return [];
     return [
@@ -81,71 +83,10 @@ export default function TarneebScreen() {
     }));
   }, [history]);
 
-  // --- LOAD DATA ---
-  useEffect(() => {
-    const loadGameData = async () => {
-      // Resume
-      if (instanceId) {
-        const savedGame = await GameStorage.get(instanceId);
-        if (savedGame) {
-          setGameId(savedGame.id);
-          setPlayers(savedGame.players);
-          setHistory(savedGame.history);
-          setRoundNum(savedGame.history.length + 1);
-          setGameName(savedGame.title);
-          setScoreLimit(savedGame.scoreLimit || 31);
-          setGameStatus(savedGame.status);
-          if (savedGame.status === 'completed') setPhase('gameover');
-          setLastPlayed(savedGame.lastPlayed); 
-          setIsLoaded(true);
-          return;
-        }
-      }
+  // --- LOADING GUARD ---
+  if (!isLoaded || !gameState) return <SafeAreaView style={GlobalStyles.container} />;
 
-      // New Game
-      if (params.playerProfiles) {
-        try {
-          const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
-          
-          const initialPlayers: Player[] = profiles.map((p, i) => ({
-            id: (i + 1).toString(),
-            profileId: p.id,
-            name: p.name,
-            totalScore: 0,
-            isDanger: false
-          }));
-          
-          const newId = Date.now().toString();
-          const now = new Date().toISOString();
-          setGameId(newId);
-          setPlayers(initialPlayers);
-          setGameName((params.gameName as string) || "TARNEEB");
-          setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 31);
-          setLastPlayed(now);
-
-          const initialGame: GameState = {
-            id: newId,
-            instanceId: newId,
-            gameType: 'tarneeb',
-            status: 'active',
-            mode: 'teams',
-            title: (params.gameName as string) || "TARNEEB",
-            roundLabel: 'Round 1',
-            lastPlayed: now,
-            players: initialPlayers,
-            history: [],
-            scoreLimit: params.scoreLimit ? Number(params.scoreLimit) : 31,
-            isTeamScoreboard: true,
-          };
-          await GameStorage.save(initialGame);
-          setIsLoaded(true);
-        } catch (e) { console.log(e); }
-      }
-    };
-    loadGameData();
-  }, [instanceId]);
-
-  // --- Handlers ---
+  // --- HANDLERS ---
   const calculateRoundScores = (caller: 'A' | 'B' | null, bid: number, tricks: number) => {
     if (!caller) return null; 
     const success = tricks >= bid;
@@ -173,7 +114,7 @@ export default function TarneebScreen() {
       return { ...p, totalScore: newTotal, isDanger: newTotal < 0, isWinner: false };
     });
 
-    setHistory(prev => [...prev, { roundNum, playerDetails: roundDetails }]);
+    const newHistory = [...history, { roundNum: history.length + 1, playerDetails: roundDetails }];
 
     const scoreA = updatedPlayers[0].totalScore;
     const scoreB = updatedPlayers[2].totalScore;
@@ -189,18 +130,16 @@ export default function TarneebScreen() {
           const isTeamA = index < 2;
           return { ...p, isWinner: winningTeam === 'A' ? isTeamA : !isTeamA };
       });
-      setPlayers(updatedPlayers);
-      setGameStatus('completed');
-      setPhase('gameover');
+      Logger.info('GAME_ACTION', 'Tarneeb Match Won', { winningTeam });
+      updateState({ players: updatedPlayers, history: newHistory, status: 'completed' });
     } else {
-        setPlayers(updatedPlayers);
-        setRoundNum(prev => prev + 1);
+        Logger.info('GAME_ACTION', `Round ${newHistory.length} Committed`, { result });
+        updateState({ players: updatedPlayers, history: newHistory, roundLabel: `Round ${newHistory.length + 1}` });
         setCallingTeam(null);
         setBidAmount(7);
         setTricksTaken(7);
         setPhase('bidding');
     }
-    setLastPlayed(new Date().toISOString()); 
   };
 
   const handleRematch = () => {
@@ -209,7 +148,7 @@ export default function TarneebScreen() {
       pathname: "/games/tarneeb",
       params: {
         playerProfiles: JSON.stringify(profileParams),
-        gameName: gameName,
+        gameName: title,
         scoreLimit: scoreLimit.toString(),
         mode: 'teams'
       }
@@ -264,40 +203,14 @@ export default function TarneebScreen() {
             return { ...p, isWinner: winningTeam === 'A' ? isTeamA : !isTeamA };
         });
         newStatus = 'completed';
-        setPhase('gameover');
     } else {
-        setPhase('bidding');
         newStatus = 'active';
     }
 
-    setHistory(newHistory);
-    setPlayers(recalculatedPlayers);
-    setGameStatus(newStatus);
+    Logger.info('GAME_ACTION', `Round ${editingRound.index + 1} Edited`);
+    updateState({ players: recalculatedPlayers, history: newHistory, status: newStatus });
     setEditingRound(null);
-    setLastPlayed(new Date().toISOString()); 
   };
-
-  useEffect(() => {
-    if (!isLoaded || !gameId || !lastPlayed) return;
-    if (isFirstLoad.current) { isFirstLoad.current = false; return; }
-    const gameState: GameState = {
-      id: gameId,
-      instanceId: gameId,
-      gameType: 'tarneeb',
-      status: gameStatus,
-      mode: 'teams',
-      title: gameName, 
-      roundLabel: `Round ${roundNum}`, 
-      lastPlayed,
-      players, 
-      history,
-      scoreLimit,
-      isTeamScoreboard: true 
-    };
-    GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded, gameId, gameStatus, lastPlayed]);
-
-  if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   const winners = players.filter(p => p.isWinner);
   const winnerText = winners.length > 0 ? `${winners.map(p => p.name).join(' & ')}` : "No Winner";
@@ -306,8 +219,8 @@ export default function TarneebScreen() {
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
       <GameHeader 
-        title={gameName.toUpperCase()} 
-        subtitle={gameStatus === 'completed' ? "COMPLETED" : `Score Limit: ${scoreLimit}`}
+        title={title.toUpperCase()} 
+        subtitle={status === 'completed' ? "COMPLETED" : `Score Limit: ${scoreLimit}`}
         onBack={() => router.dismissAll()} 
       />
       
@@ -328,6 +241,7 @@ export default function TarneebScreen() {
                 <Text style={GameStyles.phaseTitle}>Place Bids</Text>
                 <View style={[GameStyles.badge, callingTeam ? GameStyles.badgeSuccess : GameStyles.badgeError]}>
                     <Text style={[GameStyles.badgeText, callingTeam ? { color: Colors.primary } : { color: Colors.danger }]}>
+                      {/* Ensure this is strictly Text */}
                       Total: {callingTeam ? bidAmount : 0}
                     </Text>
                 </View>
@@ -382,54 +296,55 @@ export default function TarneebScreen() {
         <GameOverScreen winners={winnerText} onRematch={handleRematch} />
       )}
 
+      {/* Edit Modal */}
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
-           <View style={GameStyles.modalOverlay}>
-             <View style={GameStyles.modalContent}>
-               <Text style={GameStyles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
-               <ScrollView style={{ maxHeight: 400 }}>
-                 <View style={{gap: 20}}>
-                   <View>
-                     <Text style={[GameStyles.sectionLabel, {marginBottom: 10}]}>Bidding</Text>
-                     <BiddingPhase 
-                        callingTeam={editingRound.callingTeam} 
-                        setCallingTeam={(t: any) => setEditingRound(prev => prev ? ({...prev, callingTeam: t}) : null)}
-                        bidAmount={editingRound.bidAmount} 
-                        setBidAmount={(b: any) => setEditingRound(prev => prev ? ({...prev, bidAmount: b}) : null)}
-                        setTricksTaken={() => {}} 
-                        teamNames={teamNames}
-                        isModal={true}
-                      />
-                   </View>
-                   <View style={{borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 20}}>
-                     <Text style={[GameStyles.sectionLabel, {marginBottom: 10}]}>Result</Text>
-                     <ScoringPhase 
-                        callingTeam={editingRound.callingTeam} 
-                        tricksTaken={editingRound.tricksTaken} 
-                        setTricksTaken={(t: any) => setEditingRound(prev => prev ? ({...prev, tricksTaken: typeof t === 'function' ? t(prev.tricksTaken) : t}) : null)}
-                        preview={calculateRoundScores(editingRound.callingTeam, editingRound.bidAmount, editingRound.tricksTaken)}
-                        isModal={true} 
-                      />
-                   </View>
-                 </View>
-               </ScrollView>
-               <View style={GameStyles.modalFooter}>
-                 <TouchableOpacity onPress={() => setEditingRound(null)} style={GameStyles.modalCancel}>
-                   <Text style={{color: Colors.textMuted}}>Cancel</Text>
-                 </TouchableOpacity>
-                 <TouchableOpacity onPress={saveEditedRound} style={GameStyles.modalSave}>
-                   <Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text>
-                 </TouchableOpacity>
-               </View>
-             </View>
-           </View>
+            <View style={GameStyles.modalOverlay}>
+              <View style={GameStyles.modalContent}>
+                <Text style={GameStyles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
+                <ScrollView style={{ maxHeight: 400 }}>
+                  <View style={{gap: 20}}>
+                    <View>
+                      <Text style={[GameStyles.sectionLabel, {marginBottom: 10}]}>Bidding</Text>
+                      <BiddingPhase 
+                         callingTeam={editingRound.callingTeam} 
+                         setCallingTeam={(t: any) => setEditingRound(prev => prev ? ({...prev, callingTeam: t}) : null)}
+                         bidAmount={editingRound.bidAmount} 
+                         setBidAmount={(b: any) => setEditingRound(prev => prev ? ({...prev, bidAmount: b}) : null)}
+                         setTricksTaken={() => {}} 
+                         teamNames={teamNames}
+                         isModal={true}
+                       />
+                    </View>
+                    <View style={{borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 20}}>
+                      <Text style={[GameStyles.sectionLabel, {marginBottom: 10}]}>Result</Text>
+                      <ScoringPhase 
+                         callingTeam={editingRound.callingTeam} 
+                         tricksTaken={editingRound.tricksTaken} 
+                         setTricksTaken={(t: any) => setEditingRound(prev => prev ? ({...prev, tricksTaken: typeof t === 'function' ? t(prev.tricksTaken) : t}) : null)}
+                         preview={calculateRoundScores(editingRound.callingTeam, editingRound.bidAmount, editingRound.tricksTaken)}
+                         isModal={true} 
+                       />
+                    </View>
+                  </View>
+                </ScrollView>
+                <View style={GameStyles.modalFooter}>
+                  <TouchableOpacity onPress={() => setEditingRound(null)} style={GameStyles.modalCancel}>
+                    <Text style={{color: Colors.textMuted}}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={saveEditedRound} style={GameStyles.modalSave}>
+                    <Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
         </Modal>
       )}
     </SafeAreaView>
   );
 }
 
-// --- Sub-Components (Styled with GameStyles) ---
+// --- SUB-COMPONENTS ---
 
 const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, setTricksTaken, teamNames, isModal = false }: any) => (
   <>
@@ -447,6 +362,7 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
           activeOpacity={0.8}
         >
           <Text style={[GameStyles.teamNameBig, callingTeam === team && { color: Colors.primary }, isModal && {fontSize: 16, marginBottom: 2}]}>Team {team}</Text>
+          {/* Ensure teamNames is strictly accessed as string */}
           <Text style={[GameStyles.teamPlayers, isModal && {fontSize: 10}]}>{teamNames[team]}</Text>
           {callingTeam === team && <Crown size={isModal ? 16 : 20} color={Colors.primary} style={{marginTop: isModal ? 4 : 8}} />}
         </TouchableOpacity>
@@ -465,7 +381,7 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
           ]}
           onPress={() => {
             setBidAmount(num);
-            setTricksTaken(num); // Auto-set
+            if (setTricksTaken) setTricksTaken(num); // Auto-set
           }}
           activeOpacity={0.8}
         >
@@ -479,7 +395,10 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
 const ScoringPhase = ({ callingTeam, tricksTaken, setTricksTaken, preview, isModal = false }: any) => (
   <View style={[GameStyles.scoringContainer, isModal && {gap: 12, flexDirection: 'row'}]}>
      <View style={[GameStyles.counterCard, isModal && {padding: 12, flex: 1}]}>
-       <Text style={[GameStyles.counterLabel, isModal && {fontSize: 10, marginBottom: 8, textAlign: 'center'}]}>{isModal ? `Tricks (${callingTeam})` : `Tricks Taken by Team ${callingTeam}`}</Text>
+       {/* Use simple string for label */}
+       <Text style={[GameStyles.counterLabel, isModal && {fontSize: 10, marginBottom: 8, textAlign: 'center'}]}>
+         {isModal ? `Tricks (${callingTeam})` : `Tricks Taken by Team ${callingTeam}`}
+       </Text>
        <View style={[GameStyles.counterRow, isModal && {gap: 8, justifyContent: 'center'}]}>
           <TouchableOpacity onPress={() => setTricksTaken((p: number) => Math.max(0, p - 1))} style={[GameStyles.counterBtn, isModal && {width: 32, height: 32, borderRadius: 16}]}>
             <Text style={[GameStyles.counterBtnText, isModal && {fontSize: 20, marginTop: -2}]}>-</Text>
