@@ -1,7 +1,7 @@
 import { useKeepAwake } from "expo-keep-awake";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { Heart } from "lucide-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -17,34 +17,23 @@ import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { GameStyles } from "../../constants/game_styles";
 import { Colors, GlobalStyles } from "../../constants/theme";
-import { GameState, Player, RoundHistory, UserProfile } from "../../constants/types";
-import { GameStorage } from "../../services/game_storage";
+import { GameRoundDetails, Player } from "../../constants/types"; // Import Types
+import { useGameCore } from "../../hooks/useGameCore";
+import { Logger } from "../../services/logger";
+import { RoundValidator } from "../../services/round_validator";
+import { StatsEngine } from "../../services/stats_engine";
+
 
 export default function LeekhaScreen() {
   useKeepAwake();
-  
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const instanceId = (params.instanceId as string) || (params.id as string);
 
-  // --- Refs ---
-  const isFirstLoad = useRef(true);
+  // 1. USE THE GENERIC HOOK
+  const { gameState, isLoaded, updateState } = useGameCore('leekha', 'LEEKHA', 101, false);
 
-  // --- State ---
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [gameId, setGameId] = useState<string>("");
-  const [lastPlayed, setLastPlayed] = useState<string>(""); 
-
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [history, setHistory] = useState<RoundHistory[]>([]);
-  const [roundNum, setRoundNum] = useState(1);
+  // --- Local UI State ---
   const [isExpanded, setIsExpanded] = useState(false);
   
-  const [mode, setMode] = useState<'solo' | 'teams'>('solo');
-  const [gameName, setGameName] = useState("LEEKHA");
-  const [scoreLimit, setScoreLimit] = useState<number>(101);
-  const [gameStatus, setGameStatus] = useState<'active' | 'completed'>('active');
-
   // Round Input State
   const [hearts, setHearts] = useState<Record<string, number>>({});
   const [qsHolder, setQsHolder] = useState<string | null>(null);
@@ -57,83 +46,22 @@ export default function LeekhaScreen() {
     tenHolder: string | null;
   } | null>(null);
 
-  // --- LOAD DATA ---
-  useEffect(() => {
-    const loadGameData = async () => {
-      // 1. Resume
-      if (instanceId) {
-        const savedGame = await GameStorage.get(instanceId);
-        if (savedGame) {
-          setGameId(savedGame.id);
-          setPlayers(savedGame.players);
-          setHistory(savedGame.history);
-          setRoundNum(savedGame.history.length + 1);
-          setMode(savedGame.mode);
-          setGameName(savedGame.title);
-          setScoreLimit(savedGame.scoreLimit || 101);
-          setGameStatus(savedGame.status);
-          
-          setLastPlayed(savedGame.lastPlayed); 
-
-          setIsLoaded(true);
-          return;
-        }
-      }
-
-      // 2. New Game
-      if (params.playerProfiles) {
-        try {
-          const profiles: UserProfile[] = JSON.parse(params.playerProfiles as string);
-          
-          const initialPlayers: Player[] = profiles.map((p, i) => ({
-            id: (i + 1).toString(),
-            profileId: p.id,
-            name: p.name,
-            totalScore: 0,
-            isDanger: false
-          }));
-          
-          const newId = Date.now().toString();
-          const now = new Date().toISOString();
-
-          setGameId(newId);
-          setPlayers(initialPlayers);
-          setMode((params.mode as 'solo' | 'teams') || 'solo');
-          setGameName((params.gameName as string) || "LEEKHA");
-          setScoreLimit(params.scoreLimit ? Number(params.scoreLimit) : 101);
-          setLastPlayed(now);
-
-          const initialGame: GameState = {
-            id: newId,
-            instanceId: newId,
-            gameType: 'leekha',
-            status: 'active',
-            mode: (params.mode as 'solo' | 'teams') || 'solo',
-            title: (params.gameName as string) || "LEEKHA",
-            roundLabel: 'Round 1',
-            lastPlayed: now,
-            players: initialPlayers,
-            history: [],
-            scoreLimit: params.scoreLimit ? Number(params.scoreLimit) : 101,
-            isTeamScoreboard: false,
-          };
-          await GameStorage.save(initialGame);
-
-          setIsLoaded(true);
-        } catch (e) { console.log("Error init new game", e); }
-      }
-    };
-    loadGameData();
-  }, [instanceId]);
-
   // Initialize Round Inputs
   useEffect(() => {
-    if (players.length > 0 && Object.keys(hearts).length === 0) {
+    if (!isLoaded || !gameState) return;
+    if (gameState.players.length > 0) {
       const initial: Record<string, number> = {};
-      players.forEach(p => initial[p.id] = 0);
+      gameState.players.forEach(p => initial[p.id] = 0);
       setHearts(initial);
+      setQsHolder(null);
+      setTenHolder(null);
     }
-  }, [players]);
+  }, [gameState?.history.length, isLoaded]);
+
+  if (!isLoaded || !gameState) return <SafeAreaView style={GlobalStyles.container} />;
+
+  const { players, history, scoreLimit, mode, title, status } = gameState;
+  const roundNum = history.length + 1;
 
   // --- Logic ---
   const getRoundPoints = (h: number, isQS: boolean, isTen: boolean) => {
@@ -161,48 +89,38 @@ export default function LeekhaScreen() {
   const toggleQS = (pid: string) => setQsHolder(p => (p === pid ? null : (p !== null ? p : pid)));
   const toggleTen = (pid: string) => setTenHolder(p => (p === pid ? null : (p !== null ? p : pid)));
 
-  // --- HELPER: CHECK WINNER/LOSER LOGIC ---
+  // --- Check Winner Logic ---
   const checkGameEnd = (currentPlayers: Player[]) => {
     const maxScore = Math.max(...currentPlayers.map(p => p.totalScore));
     let isGameOver = false;
 
-    // Only verify loser if the limit is reached
-    if (maxScore >= scoreLimit) {
+    if (maxScore >= (scoreLimit || 101)) {
       const losers = currentPlayers.filter(p => p.totalScore === maxScore);
 
       if (mode === 'teams' && currentPlayers.length === 4) {
-        // Check if both teams are losing (Tie at the top)
-        // Team A: indices 0,1. Team B: indices 2,3.
         const teamALosing = losers.some(p => currentPlayers.indexOf(p) < 2);
         const teamBLosing = losers.some(p => currentPlayers.indexOf(p) >= 2);
 
         if (teamALosing && teamBLosing) {
-          // TIE: Both teams touched the high score limit -> Game Continues
-          isGameOver = false;
+          isGameOver = false; 
         } else {
-          // Only one team has the max score -> Game Over
           isGameOver = true;
         }
       } else {
-        // Solo Mode: Tie if multiple players share the max score
-        isGameOver = losers.length === 1;
+        isGameOver = losers.length === 1; 
       }
     }
 
     if (isGameOver) {
-      // Mark Winners
       if (mode === 'teams' && currentPlayers.length === 4) {
-        // Re-find the single loser team to determine winner
         const losers = currentPlayers.filter(p => p.totalScore === maxScore);
         const teamALost = losers.some(p => currentPlayers.indexOf(p) < 2);
         
         return currentPlayers.map((p, index) => {
           const isTeamA = index < 2;
-          // If Team A lost, Team B wins
           return { ...p, isWinner: teamALost ? !isTeamA : isTeamA };
         });
       } else {
-        // Solo: Winner is the one with the lowest score
         const minScore = Math.min(...currentPlayers.map(p => p.totalScore));
         return currentPlayers.map(p => ({
           ...p,
@@ -211,62 +129,113 @@ export default function LeekhaScreen() {
       }
     }
 
-    // Game continues: Reset winner status
     return currentPlayers.map(p => ({ ...p, isWinner: false }));
   };
 
   const commitRound = () => {
-    if (!isRoundValid) return;
+  if (!isRoundValid) return;
 
-    const currentRoundDetails: Record<string, any> = {};
-    players.forEach(p => {
-      currentRoundDetails[p.id] = {
-        score: currentRoundPoints(p.id),
-        hearts: hearts[p.id] || 0,
-        hasQS: qsHolder === p.id,
-        hasTen: tenHolder === p.id
-      };
-    });
+  // 1. Prepare Data (Strictly Typed Record)
+  const currentRoundDetails: Record<string, GameRoundDetails> = {};
 
-    setHistory(prev => [...prev, { roundNum, playerDetails: currentRoundDetails }]);
+  players.forEach(p => {
+    currentRoundDetails[p.profileId] = {
+      kind: "leekha",
+      score: currentRoundPoints(p.id),
+      heartsTaken: hearts[p.id] || 0,
+      hasQS: qsHolder === p.id,
+      hasTen: tenHolder === p.id,
+    };
+  });
 
-    // 1. Update Scores
-    let updatedPlayers = players.map(p => {
-      const newTotal = p.totalScore + currentRoundPoints(p.id);
-      return { 
-        ...p, 
-        totalScore: newTotal,
-        isDanger: newTotal >= (scoreLimit * 0.85) 
-      };
-    });
-    
-    // 2. Determine Win/Loss
-    updatedPlayers = checkGameEnd(updatedPlayers);
-    
-    // 3. Update Status
-    const hasWinner = updatedPlayers.some(p => p.isWinner);
-    setGameStatus(hasWinner ? 'completed' : 'active');
-
-    setPlayers(updatedPlayers);
-
-    // Reset Inputs
-    const resetHearts: Record<string, number> = {};
-    players.forEach(p => resetHearts[p.id] = 0);
-    setHearts(resetHearts);
-    setQsHolder(null);
-    setTenHolder(null);
-    setRoundNum(prev => prev + 1);
-    setLastPlayed(new Date().toISOString()); 
+  const newRound = {
+    roundNum: history.length + 1,
+    timestamp: new Date().toISOString(),
+    playerDetails: currentRoundDetails,
   };
+
+  const newHistory = [...history, newRound];
+
+  // 2. Update Scores
+  let updatedPlayers = players.map(p => {
+    const newTotal = p.totalScore + currentRoundPoints(p.id);
+    return {
+      ...p,
+      totalScore: newTotal,
+      isDanger: newTotal >= ((scoreLimit || 101) * 0.85),
+    };
+  });
+
+  // 3. Determine Win/Loss
+  updatedPlayers = checkGameEnd(updatedPlayers);
+  const hasWinner = updatedPlayers.some(p => p.isWinner);
+
+  // 4. Log
+  Logger.info("GAME_ACTION", `Round ${newHistory.length} Committed`, {
+    qsHolder,
+    tenHolder,
+  });
+
+  // 5. Update State
+  updateState({
+    players: updatedPlayers,
+    history: newHistory,
+    status: hasWinner ? "completed" : "active",
+  });
+
+  // ---------------- DEV TESTS ----------------
+  if (__DEV__) {
+    const p0 = players[0];
+    if (!p0) return;
+
+    // A) Validate the just-created round structure (runtime safety)
+    const mockGame = { ...gameState, history: newHistory };
+    const errors = RoundValidator.validateLastRound(mockGame);
+    if (errors.length) {
+      Logger.error("DATA_INTEGRITY", "❌ Leekha round invalid", errors);
+    } else {
+      Logger.info("DATA_INTEGRITY", "✅ Leekha round schema valid");
+    }
+
+    // B) Round-by-round log for players[0]
+    // Logs every round's delta + running total using the stored history details
+    const rounds = StatsEngine.getPlayerRounds([mockGame], p0.profileId)
+      .filter(r => r.kind === "leekha")
+      // getPlayerRounds sorts newest-first; we want oldest-first for replay display
+      .sort((a, b) => (a.roundNum > b.roundNum ? 1 : -1));
+
+    let runningTotal = 0;
+
+    Logger.info("SANITY_STATS", `📌 Leekha Round-by-Round for ${p0.name} (${p0.profileId})`, {
+      rounds: rounds.length,
+      gameId: gameState.id,
+      instanceId: gameState.instanceId,
+    });
+
+    for (const r of rounds) {
+      // In Leekha, r.score is the round delta for that player
+      runningTotal += r.score;
+
+      Logger.info("SANITY_STATS", `R${r.roundNum}: +${r.score} (total=${runningTotal})`, {
+        heartsTaken: r.heartsTaken,
+        hasQS: r.hasQS,
+        hasTen: r.hasTen,
+        date: r.date,
+      });
+    }
+  }
+  // ------------------------------------------
+};
 
   const handleRematch = () => {
     const profileParams = players.map(p => ({ id: p.profileId, name: p.name }));
+    Logger.info('GAME_ACTION', 'Rematch Requested');
     router.push({
       pathname: "/games/leekha",
       params: {
         playerProfiles: JSON.stringify(profileParams),
-        gameName: gameName,
-        scoreLimit: scoreLimit.toString(),
+        gameName: title,
+        scoreLimit: scoreLimit?.toString(),
         mode: mode
       }
     });
@@ -276,94 +245,90 @@ export default function LeekhaScreen() {
     if (!editingRound) return;
     const totalEditHearts = Object.values(editingRound.hearts).reduce((a, b) => a + b, 0);
     
-    if (totalEditHearts !== 13 || !editingRound.qsHolder || !editingRound.tenHolder) {
-      return;
-    }
+    if (totalEditHearts !== 13 || !editingRound.qsHolder || !editingRound.tenHolder) return;
 
     const newHistory = [...history];
-    const roundDetails: Record<string, any> = {};
+    const roundDetails: Record<string, GameRoundDetails> = {};
 
     players.forEach(p => {
       const h = editingRound.hearts[p.id] || 0;
       const qs = editingRound.qsHolder === p.id;
       const ten = editingRound.tenHolder === p.id;
-      roundDetails[p.id] = {
+      
+      // Store edit using Profile ID
+      roundDetails[p.profileId] = {
+        kind: 'leekha',
         score: getRoundPoints(h, qs, ten),
-        hearts: h,
+        heartsTaken: h,
         hasQS: qs,
         hasTen: ten
       };
     });
 
-    newHistory[editingRound.index] = { ...newHistory[editingRound.index], playerDetails: roundDetails };
+    newHistory[editingRound.index] = { 
+        ...newHistory[editingRound.index], 
+        playerDetails: roundDetails 
+    };
 
-    // 1. Recalculate Totals
-    let recalculatedPlayers = players.map(p => {
-      const totalScore = newHistory.reduce((sum, round) => sum + (round.playerDetails[p.id]?.score || 0), 0);
-      return { 
-        ...p, 
-        totalScore, 
-        isDanger: totalScore >= (scoreLimit * 0.85)
-      };
+    // Replay History to ensure accurate totals
+    let recalculatedPlayers = players.map(p => ({...p, totalScore: 0}));
+    
+    // Calculate totals by re-summing history
+    const finalHistory = newHistory.map(round => {
+        recalculatedPlayers = recalculatedPlayers.map(p => {
+            const rData = round.playerDetails[p.profileId];
+            if (rData && rData.kind === 'leekha') {
+                return { ...p, totalScore: p.totalScore + rData.score };
+            }
+            return p;
+        });
+        return round;
     });
 
-    // 2. Determine Win/Loss
+    // Re-check win/loss conditions
+    recalculatedPlayers = recalculatedPlayers.map(p => ({
+        ...p,
+        isDanger: p.totalScore >= ((scoreLimit || 101) * 0.85)
+    }));
     recalculatedPlayers = checkGameEnd(recalculatedPlayers);
-
-    // 3. Update Status
-    const hasWinner = recalculatedPlayers.some(p => p.isWinner);
-    setGameStatus(hasWinner ? 'completed' : 'active');
-
-    setHistory(newHistory);
-    setPlayers(recalculatedPlayers);
-    setEditingRound(null);
-    setLastPlayed(new Date().toISOString()); 
-  };
-
-  // --- Persistence ---
-  useEffect(() => {
-    if (!isLoaded || !gameId || !lastPlayed) return;
-    if (isFirstLoad.current) { isFirstLoad.current = false; return; }
     
-    const gameState: GameState = {
-      id: gameId,
-      instanceId,
-      gameType: 'leekha',
-      status: gameStatus,
-      mode,
-      title: gameName,
-      lastPlayed, 
-      players,
-      history,
-      roundLabel: `Round ${roundNum}`,
-      scoreLimit,
-      isTeamScoreboard: false 
-    };
-    GameStorage.save(gameState);
-  }, [players, history, roundNum, isLoaded, gameId, gameStatus, lastPlayed]);
+    const hasWinner = recalculatedPlayers.some(p => p.isWinner);
+
+    Logger.info('GAME_ACTION', `Round ${editingRound.index + 1} Edited`);
+
+    updateState({
+        players: recalculatedPlayers,
+        history: finalHistory,
+        status: hasWinner ? 'completed' : 'active'
+    });
+
+    setEditingRound(null);
+  };
 
   const renderLastRoundIcons = (p: Player) => {
     if (history.length === 0) return <View style={{ height: 16 }} />;
-    const details = history[history.length - 1].playerDetails[p.id];
-    if (!details) return <View style={{ height: 16 }} />;
-    const hasIcons = details.hasQS || details.hasTen || details.hearts > 0;
+    // Look up via Profile ID for display
+    const details = history[history.length - 1].playerDetails[p.profileId];
+    
+    // Type Guard
+    if (!details || details.kind !== 'leekha') return <View style={{ height: 16 }} />;
+    
+    const hasIcons = details.hasQS || details.hasTen || details.heartsTaken > 0;
     if (!hasIcons) return <View style={{ height: 16 }} />;
 
     return (
       <View style={GameStyles.lastRoundIcons}>
           {details.hasQS && <Text style={GameStyles.iconQS}>Q♠</Text>}
           {details.hasTen && <Text style={GameStyles.iconTen}>10♦</Text>}
-          {details.hearts > 0 && (
+          {details.heartsTaken > 0 && (
             <View style={GameStyles.iconHeartContainer}>
               <Heart size={10} color={Colors.danger} fill={Colors.danger} />
-              <Text style={GameStyles.iconHeartText}>{details.hearts}</Text>
+              <Text style={GameStyles.iconHeartText}>{details.heartsTaken}</Text>
             </View>
           )}
       </View>
     );
   };
-
-  if (!isLoaded) return <SafeAreaView style={GlobalStyles.container} />;
 
   const orderedPlayersForUI = players.length === 4 
     ? [players[0], players[2], players[1], players[3]]
@@ -377,8 +342,8 @@ export default function LeekhaScreen() {
       <Stack.Screen options={{ headerShown: false }} />
 
       <GameHeader 
-        title={gameName.toUpperCase()} 
-        subtitle={gameStatus === 'completed' ? "COMPLETED" : `Score Limit: ${scoreLimit}`} 
+        title={title.toUpperCase()} 
+        subtitle={status === 'completed' ? "COMPLETED" : `Limit: ${scoreLimit}`} 
         onBack={() => router.dismissAll()} 
       />
       
@@ -390,16 +355,22 @@ export default function LeekhaScreen() {
         onEditRound={(idx) => {
            const r = history[idx];
            const h: any = {}; let qs = null; let ten = null;
-           Object.keys(r.playerDetails).forEach(pid => {
-              h[pid] = r.playerDetails[pid].hearts;
-              if (r.playerDetails[pid].hasQS) qs = pid;
-              if (r.playerDetails[pid].hasTen) ten = pid;
+           
+           // Reading needs to happen via Profile ID
+           players.forEach(p => {
+              const details = r.playerDetails[p.profileId];
+              if (details && details.kind === 'leekha') {
+                  h[p.id] = details.heartsTaken;
+                  if (details.hasQS) qs = p.id;
+                  if (details.hasTen) ten = p.id;
+              }
            });
+           
            setEditingRound({ index: idx, hearts: h, qsHolder: qs, tenHolder: ten });
         }}
       />
 
-      {gameStatus !== 'completed' ? (
+      {status !== 'completed' ? (
         <>
           <View style={GameStyles.statusRowFixed}>
             <Text style={GameStyles.sectionTitle}>Round {roundNum}</Text>
@@ -441,52 +412,52 @@ export default function LeekhaScreen() {
       {/* --- Edit Modal --- */}
       {editingRound && (
         <Modal animationType="slide" transparent={true} visible={true}>
-           <View style={GameStyles.modalOverlay}>
-             <View style={GameStyles.modalContent}>
-               <Text style={GameStyles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
-               <View style={GameStyles.modalStatusRow}>
+            <View style={GameStyles.modalOverlay}>
+              <View style={GameStyles.modalContent}>
+                <Text style={GameStyles.modalTitle}>Edit Round {editingRound.index + 1}</Text>
+                <View style={GameStyles.modalStatusRow}>
                   <StatusBadges 
                     remainingHearts={13 - Object.values(editingRound.hearts).reduce((a,b)=>a+b,0)}
                     qsHolder={editingRound.qsHolder}
                     tenHolder={editingRound.tenHolder}
                   />
-               </View>
-               <ScrollView style={{ maxHeight: 400 }}>
-                 <View style={{ gap: 12 }}>
-                   {orderedPlayersForUI.map(p => {
-                     const h = editingRound.hearts[p.id] || 0;
-                     const hasQS = editingRound.qsHolder === p.id;
-                     const hasTen = editingRound.tenHolder === p.id;
-                     const isQSLocked = editingRound.qsHolder !== null && !hasQS;
-                     const isTenLocked = editingRound.tenHolder !== null && !hasTen;
-                     const heartsLeft = 13 - Object.values(editingRound.hearts).reduce((a,b)=>a+b,0);
-                     return (
-                        <View key={p.id} style={GameStyles.compactCard}>
-                           <View style={GameStyles.compactInfo}>
-                             <Text style={GameStyles.playerName} numberOfLines={1}>{p.name}</Text>
-                           </View>
-                           <View style={GameStyles.compactControls}>
-                             <HeartControl 
-                               value={h}
-                               onDecrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: Math.max(0, h-1)}}) : null)}
-                               onIncrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: h+1}}) : null)}
-                               disableDec={h === 0}
-                               disableInc={heartsLeft === 0}
-                             />
-                             <CardToggleButton type="QS" active={hasQS} locked={isQSLocked} onPress={() => setEditingRound(prev => prev ? ({...prev, qsHolder: hasQS ? null : p.id}) : null)} />
-                             <CardToggleButton type="10D" active={hasTen} locked={isTenLocked} onPress={() => setEditingRound(prev => prev ? ({...prev, tenHolder: hasTen ? null : p.id}) : null)} style={{ marginLeft: 6 }} />
-                           </View>
-                        </View>
-                     );
-                   })}
-                 </View>
-               </ScrollView>
-               <View style={GameStyles.modalFooter}>
-                 <TouchableOpacity onPress={() => setEditingRound(null)} style={GameStyles.modalCancel}><Text style={{color: Colors.textMuted}}>Cancel</Text></TouchableOpacity>
-                 <TouchableOpacity onPress={saveEditedRound} style={GameStyles.modalSave}><Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text></TouchableOpacity>
-               </View>
-             </View>
-           </View>
+                </View>
+                <ScrollView style={{ maxHeight: 400 }}>
+                  <View style={{ gap: 12 }}>
+                    {orderedPlayersForUI.map(p => {
+                      const h = editingRound.hearts[p.id] || 0;
+                      const hasQS = editingRound.qsHolder === p.id;
+                      const hasTen = editingRound.tenHolder === p.id;
+                      const isQSLocked = editingRound.qsHolder !== null && !hasQS;
+                      const isTenLocked = editingRound.tenHolder !== null && !hasTen;
+                      const heartsLeft = 13 - Object.values(editingRound.hearts).reduce((a,b)=>a+b,0);
+                      return (
+                         <View key={p.id} style={GameStyles.compactCard}>
+                            <View style={GameStyles.compactInfo}>
+                              <Text style={GameStyles.playerName} numberOfLines={1}>{p.name}</Text>
+                            </View>
+                            <View style={GameStyles.compactControls}>
+                              <HeartControl 
+                                value={h}
+                                onDecrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: Math.max(0, h-1)}}) : null)}
+                                onIncrement={() => setEditingRound(prev => prev ? ({...prev, hearts: {...prev.hearts, [p.id]: h+1}}) : null)}
+                                disableDec={h === 0}
+                                disableInc={heartsLeft === 0}
+                              />
+                              <CardToggleButton type="QS" active={hasQS} locked={isQSLocked} onPress={() => setEditingRound(prev => prev ? ({...prev, qsHolder: hasQS ? null : p.id}) : null)} />
+                              <CardToggleButton type="10D" active={hasTen} locked={isTenLocked} onPress={() => setEditingRound(prev => prev ? ({...prev, tenHolder: hasTen ? null : p.id}) : null)} style={{ marginLeft: 6 }} />
+                            </View>
+                         </View>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+                <View style={GameStyles.modalFooter}>
+                  <TouchableOpacity onPress={() => setEditingRound(null)} style={GameStyles.modalCancel}><Text style={{color: Colors.textMuted}}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={saveEditedRound} style={GameStyles.modalSave}><Text style={{color: Colors.text, fontWeight: 'bold'}}>Save Changes</Text></TouchableOpacity>
+                </View>
+              </View>
+            </View>
         </Modal>
       )}
     </SafeAreaView>
