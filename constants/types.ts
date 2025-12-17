@@ -1,45 +1,65 @@
-// --- START OF FILE: constants/types.ts ---
+// constants/types.ts
 
-// 1. The Global "Profile" (Phonebook entry)
 export type UserProfile = {
-  id: string;   // Unique ID (e.g., "u_1709823")
-  name: string; // "Charbel"
-  // Future: avatar, totalWins, etc.
+  id: string;
+  name: string;
 };
 
-// 2. The Player inside a specific game
 export type Player = {
-  id: string;           // Game-context ID (e.g., "1", "2", "A", "B")
-  profileId: string;    // Link to UserProfile
-  name: string;         // Snapshot of name at game time
+  id: string;
+  profileId: string;
+  name: string;
   totalScore: number;
   isDanger: boolean;
-  isWinner?: boolean;   // <--- NEW: Persist the win status
-  isLeader?: boolean;   // For Tarneeb/Leekha
+  isWinner: boolean;
 };
 
-// 3. History (Readable, explicit fields)
+export type TarneebRoundData = {
+  kind: 'tarneeb';
+  bid: number;
+  tricksTaken: number;
+  isCallingTeamMember: boolean; // <--- RENAMED (Semantically clearer)
+  score: number;
+  partnerProfileId?: string;
+};
+
+export type LeekhaRoundData = {
+  kind: 'leekha';
+  heartsTaken: number;
+  hasQS: boolean;
+  hasTen: boolean;
+  score: number;
+};
+
+export type FourHundredRoundData = {
+  kind: '400';
+  bid: number;
+  won: boolean;
+  score: number; // <--- ADDED BACK (For integrity/performance)
+};
+
+export type GameRoundDetails = TarneebRoundData | LeekhaRoundData | FourHundredRoundData;
+
 export type RoundHistory = {
   roundNum: number;
-  playerDetails: Record<string, any>; 
+  timestamp: string;
+  playerDetails: Record<string, GameRoundDetails>;
 };
 
-// 4. The Full Game State
 export type GameState = {
+  schemaVersion: 1;
   id: string;
-  instanceId?: string;
+  instanceId: string;
   gameType: 'leekha' | 'tarneeb' | '400';
   mode: 'solo' | 'teams';
   title: string;
   lastPlayed: string;
   status: 'active' | 'completed';
   players: Player[];
-  history: RoundHistory[]; 
+  history: RoundHistory[];
   scoreLimit?: number;
-  roundLabel?: string; 
+  roundLabel?: string;
   isTeamScoreboard?: boolean;
 };
 
-// 5. The Summary
-export type GameSummary = Omit<GameState, 'history'>;
-// --- END OF FILE: constants/types.ts ---
+export type GameSummary = Omit<GameState, "history">;
