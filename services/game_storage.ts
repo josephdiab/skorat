@@ -5,20 +5,108 @@ import { CURRENT_SCHEMA_VERSION, Migrations } from "./migrations";
 
 const STORAGE_KEY = "card_games_data";
 
+/**
+ * Validates a game before saving to ensure data integrity
+ */
+function validateGame(game: GameState): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  // Validate schemaVersion
+  if (game.schemaVersion === undefined || game.schemaVersion === null) {
+    errors.push("Missing schemaVersion");
+  } else if (typeof game.schemaVersion !== "number") {
+    errors.push("schemaVersion must be a number");
+  }
+
+  // Validate required fields
+  if (!game.instanceId && !game.id) {
+    errors.push("Missing instanceId or id");
+  }
+  if (!game.gameType) {
+    errors.push("Missing gameType");
+  }
+  if (!game.players || !Array.isArray(game.players)) {
+    errors.push("Missing or invalid players array");
+  }
+
+  // Validate all players have profileId
+  if (game.players && Array.isArray(game.players)) {
+    game.players.forEach((player, index) => {
+      if (!player.profileId) {
+        errors.push(`Player at index ${index} (${player.name || "unnamed"}) is missing profileId`);
+      }
+      if (!player.id) {
+        errors.push(`Player at index ${index} (${player.name || "unnamed"}) is missing id`);
+      }
+    });
+  }
+
+  // Validate history structure if present
+  if (game.history && Array.isArray(game.history)) {
+    game.history.forEach((round, roundIndex) => {
+      if (!round.playerDetails || typeof round.playerDetails !== "object") {
+        errors.push(`Round ${round.roundNum || roundIndex} is missing playerDetails`);
+        return;
+      }
+
+      // Ensure all players have entries in round history
+      game.players?.forEach((player) => {
+        if (!round.playerDetails[player.profileId]) {
+          errors.push(
+            `Round ${round.roundNum || roundIndex} is missing details for player ${player.name} (profileId: ${player.profileId})`
+          );
+        }
+      });
+    });
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
 export const GameStorage = {
   /**
    * Save or Update a Game (Always persists current schema)
    */
   save: async (game: GameState) => {
     try {
+      // Ensure game has schemaVersion before validation
+      const gameWithSchema = {
+        ...game,
+        schemaVersion: game.schemaVersion ?? CURRENT_SCHEMA_VERSION,
+      };
+
+      // Validate game structure before saving
+      const validation = validateGame(gameWithSchema);
+      if (!validation.valid) {
+        const errorMessage = `Game validation failed: ${validation.errors.join("; ")}`;
+        Logger.error("STORAGE", errorMessage, {
+          instanceId: game.instanceId || game.id,
+          gameType: game.gameType,
+          errors: validation.errors,
+        });
+        throw new Error(errorMessage);
+      }
+
       const existingData = await AsyncStorage.getItem(STORAGE_KEY);
       const rawGames: any[] = existingData ? JSON.parse(existingData) : [];
 
       // Ensure game is at current schema before saving
-      const clean = Migrations.migrate({ 
-        ...game, 
-        schemaVersion: game.schemaVersion ?? CURRENT_SCHEMA_VERSION 
-      });
+      const clean = Migrations.migrate(gameWithSchema);
+
+      // Re-validate after migration to ensure migration didn't break anything
+      const postMigrationValidation = validateGame(clean);
+      if (!postMigrationValidation.valid) {
+        const errorMessage = `Post-migration validation failed: ${postMigrationValidation.errors.join("; ")}`;
+        Logger.error("STORAGE", errorMessage, {
+          instanceId: clean.instanceId || clean.id,
+          gameType: clean.gameType,
+          errors: postMigrationValidation.errors,
+        });
+        throw new Error(errorMessage);
+      }
 
       const index = rawGames.findIndex((g) => g.instanceId === clean.instanceId);
       if (index >= 0) rawGames[index] = clean;
@@ -127,8 +215,55 @@ export const GameStorage = {
    */
   overwriteAll: async (games: GameState[]) => {
     try {
+      // Validate all games before overwriting
+      const validationErrors: string[] = [];
+      games.forEach((game, index) => {
+        const gameWithSchema = {
+          ...game,
+          schemaVersion: game.schemaVersion ?? CURRENT_SCHEMA_VERSION,
+        };
+        const validation = validateGame(gameWithSchema);
+        if (!validation.valid) {
+          validationErrors.push(
+            `Game ${index} (${game.instanceId || game.id}): ${validation.errors.join("; ")}`
+          );
+        }
+      });
+
+      if (validationErrors.length > 0) {
+        const errorMessage = `Validation failed for ${validationErrors.length} game(s): ${validationErrors.join(" | ")}`;
+        Logger.error("STORAGE", errorMessage, {
+          gameCount: games.length,
+          errorCount: validationErrors.length,
+        });
+        throw new Error(errorMessage);
+      }
+
       // Sanitize before writing
-      const clean = games.map((g) => Migrations.migrate(g));
+      const clean = games.map((g) => Migrations.migrate({
+        ...g,
+        schemaVersion: g.schemaVersion ?? CURRENT_SCHEMA_VERSION,
+      }));
+
+      // Re-validate after migration
+      clean.forEach((game, index) => {
+        const validation = validateGame(game);
+        if (!validation.valid) {
+          validationErrors.push(
+            `Post-migration Game ${index} (${game.instanceId || game.id}): ${validation.errors.join("; ")}`
+          );
+        }
+      });
+
+      if (validationErrors.length > 0) {
+        const errorMessage = `Post-migration validation failed: ${validationErrors.join(" | ")}`;
+        Logger.error("STORAGE", errorMessage, {
+          gameCount: clean.length,
+          errorCount: validationErrors.length,
+        });
+        throw new Error(errorMessage);
+      }
+
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
       Logger.info("STORAGE", `Overwritten all games: ${clean.length} games saved`);
     } catch (e: any) {
