@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameState } from "../constants/types";
 import { Logger } from "./logger";
 import { CURRENT_SCHEMA_VERSION, Migrations } from "./migrations";
+import { PlayerStorage } from "./player_storage";
 
 const STORAGE_KEY = "card_games_data";
 
@@ -297,6 +298,171 @@ export const GameStorage = {
         instanceId,
       });
       throw new Error(`Failed to remove game: ${e?.message || String(e)}`);
+    }
+  },
+
+  /**
+   * Verify storage integrity and check for orphaned data
+   * Returns a detailed report of any issues found
+   */
+  verifyIntegrity: async (): Promise<{
+    valid: boolean;
+    totalGames: number;
+    totalPlayers: number;
+    issues: {
+      orphanedProfileIds: { gameId: string; gameType: string; profileId: string; playerName: string }[];
+      invalidGames: { gameId: string; gameType: string; errors: string[] }[];
+      missingProfileIds: { gameId: string; gameType: string; playerIndex: number; playerName: string }[];
+      inconsistentHistory: { gameId: string; gameType: string; roundNum: number; issue: string }[];
+      duplicateInstanceIds: { instanceId: string; count: number }[];
+    };
+  }> => {
+    try {
+      const games = await GameStorage.getAllFull();
+      const profiles = await PlayerStorage.getAll();
+      
+      // Create a Set of valid profileIds for quick lookup
+      const validProfileIds = new Set(profiles.map(p => p.id));
+      
+      const issues = {
+        orphanedProfileIds: [] as { gameId: string; gameType: string; profileId: string; playerName: string }[],
+        invalidGames: [] as { gameId: string; gameType: string; errors: string[] }[],
+        missingProfileIds: [] as { gameId: string; gameType: string; playerIndex: number; playerName: string }[],
+        inconsistentHistory: [] as { gameId: string; gameType: string; roundNum: number; issue: string }[],
+        duplicateInstanceIds: [] as { instanceId: string; count: number }[],
+      };
+
+      // Track instanceIds to find duplicates
+      const instanceIdCounts = new Map<string, number>();
+      
+      // Check each game
+      games.forEach((game) => {
+        const gameId = game.instanceId || game.id;
+        const gameType = game.gameType || "unknown";
+
+        // Track instanceId usage
+        if (game.instanceId) {
+          instanceIdCounts.set(game.instanceId, (instanceIdCounts.get(game.instanceId) || 0) + 1);
+        }
+
+        // Validate game structure
+        const validation = validateGame(game);
+        if (!validation.valid) {
+          issues.invalidGames.push({
+            gameId,
+            gameType,
+            errors: validation.errors,
+          });
+        }
+
+        // Check players for orphaned profileIds and missing profileIds
+        if (game.players && Array.isArray(game.players)) {
+          game.players.forEach((player, index) => {
+            if (!player.profileId) {
+              issues.missingProfileIds.push({
+                gameId,
+                gameType,
+                playerIndex: index,
+                playerName: player.name || "unnamed",
+              });
+            } else if (!validProfileIds.has(player.profileId)) {
+              // Orphaned profileId - exists in game but not in PlayerStorage
+              issues.orphanedProfileIds.push({
+                gameId,
+                gameType,
+                profileId: player.profileId,
+                playerName: player.name || "unnamed",
+              });
+            }
+          });
+        }
+
+        // Check history consistency
+        if (game.history && Array.isArray(game.history)) {
+          const playerProfileIds = new Set(
+            (game.players || []).map(p => p.profileId).filter(Boolean)
+          );
+
+          game.history.forEach((round) => {
+            const roundNum = round.roundNum || 0;
+
+            // Check if all players have entries in this round
+            if (game.players) {
+              game.players.forEach((player) => {
+                if (player.profileId && !round.playerDetails?.[player.profileId]) {
+                  issues.inconsistentHistory.push({
+                    gameId,
+                    gameType,
+                    roundNum,
+                    issue: `Missing details for player ${player.name} (profileId: ${player.profileId})`,
+                  });
+                }
+              });
+            }
+
+            // Check for orphaned entries in playerDetails (profileIds not in game.players)
+            if (round.playerDetails) {
+              Object.keys(round.playerDetails).forEach((profileId) => {
+                if (!playerProfileIds.has(profileId)) {
+                  issues.inconsistentHistory.push({
+                    gameId,
+                    gameType,
+                    roundNum,
+                    issue: `Orphaned round data for profileId: ${profileId} (not in game players)`,
+                  });
+                }
+              });
+            }
+          });
+        }
+      });
+
+      // Find duplicate instanceIds
+      instanceIdCounts.forEach((count, instanceId) => {
+        if (count > 1) {
+          issues.duplicateInstanceIds.push({ instanceId, count });
+        }
+      });
+
+      const totalIssues = 
+        issues.orphanedProfileIds.length +
+        issues.invalidGames.length +
+        issues.missingProfileIds.length +
+        issues.inconsistentHistory.length +
+        issues.duplicateInstanceIds.length;
+
+      const totalPlayers = games.reduce((sum, g) => sum + (g.players?.length || 0), 0);
+
+      const result = {
+        valid: totalIssues === 0,
+        totalGames: games.length,
+        totalPlayers,
+        issues,
+      };
+
+      if (totalIssues > 0) {
+        Logger.error("STORAGE", "Storage integrity check found issues", {
+          totalGames: games.length,
+          totalIssues,
+          orphanedProfileIds: issues.orphanedProfileIds.length,
+          invalidGames: issues.invalidGames.length,
+          missingProfileIds: issues.missingProfileIds.length,
+          inconsistentHistory: issues.inconsistentHistory.length,
+          duplicateInstanceIds: issues.duplicateInstanceIds.length,
+        });
+      } else {
+        Logger.info("STORAGE", "Storage integrity check passed", {
+          totalGames: games.length,
+          totalPlayers,
+        });
+      }
+
+      return result;
+    } catch (e: any) {
+      Logger.error("STORAGE", "Failed to verify storage integrity", {
+        error: e?.message || String(e),
+      });
+      throw new Error(`Failed to verify storage integrity: ${e?.message || String(e)}`);
     }
   },
 };
