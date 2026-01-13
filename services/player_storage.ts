@@ -35,28 +35,149 @@ export const PlayerStorage = {
   // Create or Update a profile
   save: async (profile: UserProfile) => {
     try {
-      if (!profile.id || !profile.name) {
-        throw new Error("Profile must have id and name");
+      // Comprehensive validation
+      const validationErrors: string[] = [];
+
+      // Validate profile object exists
+      if (!profile || typeof profile !== 'object') {
+        throw new Error("Profile must be a valid object");
       }
 
-      const profiles = await PlayerStorage.getAll();
-      const index = profiles.findIndex(p => p.id === profile.id);
-      const isUpdate = index >= 0;
-      
-      if (isUpdate) {
-        profiles[index] = profile;
-        Logger.info("STORAGE", `Updated player profile: ${profile.name} (${profile.id})`);
-      } else {
-        profiles.push(profile);
-        Logger.info("STORAGE", `Created player profile: ${profile.name} (${profile.id})`);
+      // Validate id
+      if (!profile.id) {
+        validationErrors.push("Profile id is required");
+      } else if (typeof profile.id !== 'string') {
+        validationErrors.push("Profile id must be a string");
+      } else if (profile.id.trim().length === 0) {
+        validationErrors.push("Profile id cannot be empty");
+      } else if (profile.id.length > 100) {
+        validationErrors.push("Profile id is too long (max 100 characters)");
       }
+
+      // Validate name
+      if (!profile.name) {
+        validationErrors.push("Profile name is required");
+      } else if (typeof profile.name !== 'string') {
+        validationErrors.push("Profile name must be a string");
+      } else {
+        const trimmedName = profile.name.trim();
+        if (trimmedName.length === 0) {
+          validationErrors.push("Profile name cannot be empty");
+        } else if (trimmedName.length > 50) {
+          validationErrors.push("Profile name is too long (max 50 characters)");
+        } else if (trimmedName.length < 1) {
+          validationErrors.push("Profile name must be at least 1 character");
+        }
+      }
+
+      if (validationErrors.length > 0) {
+        const errorMessage = `Profile validation failed: ${validationErrors.join("; ")}`;
+        Logger.error("STORAGE", errorMessage, {
+          profileId: profile.id,
+          profileName: profile.name,
+          errors: validationErrors,
+        });
+        throw new Error(errorMessage);
+      }
+
+      // Normalize the profile data
+      const normalizedProfile: UserProfile = {
+        id: profile.id.trim(),
+        name: profile.name.trim(),
+      };
+
+      // Get existing profiles
+      const profiles = await PlayerStorage.getAll();
       
+      // Check if this is an update or create
+      const existingIndex = profiles.findIndex(p => p.id === normalizedProfile.id);
+      const isUpdate = existingIndex >= 0;
+
+      // For new profiles, check for duplicate names (case-insensitive)
+      if (!isUpdate) {
+        const duplicateName = profiles.find(
+          p => p.name.trim().toLowerCase() === normalizedProfile.name.toLowerCase()
+        );
+        if (duplicateName) {
+          const errorMessage = `Profile with name "${normalizedProfile.name}" already exists with id: ${duplicateName.id}`;
+          Logger.error("STORAGE", errorMessage, {
+            newProfileId: normalizedProfile.id,
+            existingProfileId: duplicateName.id,
+            profileName: normalizedProfile.name,
+          });
+          throw new Error(errorMessage);
+        }
+      } else {
+        // For updates, check if name change would create a duplicate
+        const existingProfile = profiles[existingIndex];
+        if (existingProfile.name.trim().toLowerCase() !== normalizedProfile.name.toLowerCase()) {
+          const duplicateName = profiles.find(
+            (p, idx) => idx !== existingIndex && 
+            p.name.trim().toLowerCase() === normalizedProfile.name.toLowerCase()
+          );
+          if (duplicateName) {
+            const errorMessage = `Cannot update profile: name "${normalizedProfile.name}" already exists with id: ${duplicateName.id}`;
+            Logger.error("STORAGE", errorMessage, {
+              profileId: normalizedProfile.id,
+              existingProfileId: duplicateName.id,
+              profileName: normalizedProfile.name,
+            });
+            throw new Error(errorMessage);
+          }
+        }
+      }
+
+      // Update or add profile
+      if (isUpdate) {
+        profiles[existingIndex] = normalizedProfile;
+        Logger.info("STORAGE", `Updated player profile: ${normalizedProfile.name} (${normalizedProfile.id})`);
+      } else {
+        profiles.push(normalizedProfile);
+        Logger.info("STORAGE", `Created player profile: ${normalizedProfile.name} (${normalizedProfile.id})`);
+      }
+
+      // Validate that profiles array is still valid before saving
+      try {
+        const testSerialization = JSON.stringify(profiles);
+        if (testSerialization.length > 10 * 1024 * 1024) { // 10MB limit
+          throw new Error("Profile data exceeds 10MB limit");
+        }
+      } catch (serializationError: any) {
+        Logger.error("STORAGE", "Failed to serialize profiles before saving", {
+          error: serializationError?.message || String(serializationError),
+          profileCount: profiles.length,
+        });
+        throw new Error(`Failed to validate profile data: ${serializationError?.message || String(serializationError)}`);
+      }
+
+      // Save to storage
       await AsyncStorage.setItem(PLAYER_KEY, JSON.stringify(profiles));
+
+      // Verify the save was successful by reading back
+      const verifyProfiles = await PlayerStorage.getAll();
+      const savedProfile = verifyProfiles.find(p => p.id === normalizedProfile.id);
+      if (!savedProfile) {
+        throw new Error("Profile was not saved correctly - verification failed");
+      }
+
+      return normalizedProfile;
     } catch (e: any) {
-      Logger.error("STORAGE", `Failed to save player profile: ${profile.name || 'unknown'}`, {
-        error: e?.message || String(e),
-        profileId: profile.id,
-      });
+      // Don't re-log if it's already our validation error
+      if (!e.message?.includes("validation failed") && 
+          !e.message?.includes("already exists") &&
+          !e.message?.includes("Failed to validate")) {
+        Logger.error("STORAGE", `Failed to save player profile: ${profile?.name || 'unknown'}`, {
+          error: e?.message || String(e),
+          profileId: profile?.id,
+          profileName: profile?.name,
+        });
+      }
+      // Re-throw validation errors as-is, wrap others
+      if (e.message?.includes("validation failed") || 
+          e.message?.includes("already exists") ||
+          e.message?.includes("Failed to validate")) {
+        throw e;
+      }
       throw new Error(`Failed to save player profile: ${e?.message || String(e)}`);
     }
   },
