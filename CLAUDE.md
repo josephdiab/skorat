@@ -35,10 +35,12 @@ eas build --platform android --profile production
 - `constants/` - Types, theme, game definitions, config flags
 - `services/` - Business logic: storage, migrations, stats, validation
 - `hooks/` - Custom hooks (useGameCore is the central game engine)
+- `docs/` - Detailed game rules and business logic documentation
 
 ### State Management
 
 All state is managed through React hooks with AsyncStorage persistence. The central hook is `useGameCore.ts` which handles:
+
 - Game state loading/resuming from storage
 - Auto-save on state changes
 - Schema validation
@@ -47,6 +49,7 @@ All state is managed through React hooks with AsyncStorage persistence. The cent
 ### Storage
 
 No backend - all data stored locally via AsyncStorage:
+
 - `@skorat_players_v1` - User profiles
 - `card_games_data` - Game instances and history
 
@@ -63,6 +66,29 @@ Data schema is versioned (currently v2) with auto-migration on load (`services/m
 
 - **400 Game:** Uses replay engine that recalculates all scores from history to prevent delta desync
 - **All games:** 4 players, configurable score limits, solo or team mode, complete history tracking
+
+## Documentation / Business Logic
+
+> **CRITICAL:** Complex game logic is documented in external files. You MUST read the relevant file before modifying scoring algorithms.
+
+- **400 Rules:** See `docs/rules_400.md` for bidding logic and winning conditions.
+- **Tarneeb Rules:** See `docs/rules_tarneeb.md` for team scoring and betting.
+- **Leekha Rules:** See `docs/rules_leekha.md` for card point values and penalty logic.
+
+## Coding Standards
+
+- **Styling:** NEVER hardcode hex values. Always import colors from `constants/theme.ts`.
+- **Imports:** Use absolute paths (e.g., import { Text } from `components/Themed`) to avoid `../../` hell.
+- **Components:** Use functional components with typed props interfaces.
+- **Performance:** Use `useCallback` for functions passed to children to prevent unnecessary re-renders.
+- **Error Handling:** Logic errors -> console.error. User-facing errors -> Alert.alert or Toast notification.
+
+## Common Pitfalls & Constraints
+
+- **Navigation:** We use Expo Router. Do not try to use `React Navigation` prop drilling. Use `router.push('/games/400')`.
+- **Navigation:** `AsyncStorage` is string-only. Always `JSON.stringify` before saving and `JSON.parse` with validation after loading.
+- **Safe Area:** All screens must be wrapped in `<SafeAreaView>` or handle insets manually via `useSafeAreaInsets`.
+- **Dates:** Store dates as ISO strings in the database, parse to Date objects only for display.
 
 ## Development Notes
 
