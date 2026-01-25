@@ -2,7 +2,7 @@ import { RotateCcw, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Alert, Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
-import { Colors, GlobalStyles, Spacing } from "../constants/theme";
+import { Colors, FontSize, FontWeight, GlobalStyles, Radius, Spacing } from "../constants/theme";
 import { GameSummary, Player } from "../constants/types";
 
 type MatchCardProps = {
@@ -38,7 +38,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete, 
   const getNameStyle = (p: Player) => {
     if (isWinner(p)) return { color: Colors.primary, fontWeight: '800' as const };
     if (isCompleted) return { color: Colors.textMuted, opacity: 0.5 };
-    return { color: "#ccc" };
+    return { color: Colors.gray };
   };
 
   // --- Swipe Actions ---
@@ -170,7 +170,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete, 
                                   </View>
                               ))}
                           </View>
-                          <Text style={[styles.rowText, { fontSize: 12, color: Colors.textMuted, marginHorizontal: 4 }]}>vs</Text>
+                          <Text style={[styles.rowText, { fontSize: FontSize.sm, color: Colors.textMuted, marginHorizontal: Spacing.xs }]}>vs</Text>
                           <View style={{ flex: 1, marginLeft: 4, alignItems: 'flex-end' }}>
                               {[2, 3].map(i => match.players[i] && (
                                   <View key={i} style={styles.playerRow}>
@@ -195,41 +195,41 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, onDelete, 
 const styles = StyleSheet.create({
   cardWrapper: { marginBottom: Spacing.m, backgroundColor: 'transparent' },
   cardTimestamp: { color: Colors.textMuted, marginBottom: Spacing.m },
-  cardInner: { backgroundColor: Colors.surfaceInner, borderRadius: 8, padding: Spacing.m, gap: 4 },
-  rowText: { fontSize: 14 },
-  teamLabel: { color: Colors.textSecondary, fontSize: 10, textTransform: 'uppercase', fontWeight: 'bold' },
-  playerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 4 },
-  playerNameLeft: { fontSize: 13, flex: 1, textAlign: 'left', marginRight: 8 },
-  playerNameRight: { fontSize: 13, flex: 1, textAlign: 'right', marginLeft: 8 },
-  playerNameSmall: { fontSize: 13, marginBottom: 2 },
+  cardInner: { backgroundColor: Colors.surfaceInner, borderRadius: Radius.sm, padding: Spacing.m, gap: Spacing.xs },
+  rowText: { fontSize: FontSize.md },
+  teamLabel: { color: Colors.textSecondary, fontSize: FontSize.xs, textTransform: 'uppercase', fontWeight: FontWeight.bold },
+  playerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: Spacing.xs },
+  playerNameLeft: { fontSize: FontSize.sm, flex: 1, textAlign: 'left', marginRight: Spacing.s },
+  playerNameRight: { fontSize: FontSize.sm, flex: 1, textAlign: 'right', marginLeft: Spacing.s },
+  playerNameSmall: { fontSize: FontSize.sm, marginBottom: Spacing.xxs },
   scoreBox: { width: 40, alignItems: 'center', justifyContent: 'center' },
-  playerScoreSmall: { fontWeight: "bold", fontSize: 14, color: Colors.text, textAlign: 'center' },
-  playerScoreLarge: { fontWeight: "800", fontSize: 24, color: Colors.text },
+  playerScoreSmall: { fontWeight: FontWeight.bold, fontSize: FontSize.md, color: Colors.text, textAlign: 'center' },
+  playerScoreLarge: { fontWeight: FontWeight.extrabold, fontSize: FontSize.xxxl, color: Colors.text },
   tarneebRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   nameColLeft: { flex: 1, alignItems: 'flex-start' },
   nameColRight: { flex: 1, alignItems: 'flex-end' },
-  scoreCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minWidth: 80, gap: 8 },
-  vsText: { fontSize: 12, color: Colors.textMuted, fontWeight: '600' },
-  
+  scoreCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minWidth: 80, gap: Spacing.s },
+  vsText: { fontSize: FontSize.sm, color: Colors.textMuted, fontWeight: FontWeight.semibold },
+
   // Both Swipe Actions are now 100% width containers
-  deleteSwipeContainer: { 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    width: '100%', 
-    height: '100%', 
-    backgroundColor: 'rgba(255, 82, 82, 0.1)', 
-    borderRadius: 16 
+  deleteSwipeContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.dangerLight,
+    borderRadius: Radius.lg
   },
-  rematchSwipeContainer: { 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    width: '100%', 
-    height: '100%', 
-    backgroundColor: 'rgba(15, 157, 88, 0.1)', 
-    borderRadius: 16 
+  rematchSwipeContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.primaryLight,
+    borderRadius: Radius.lg
   },
-  
+
   actionContent: { justifyContent: 'center', alignItems: 'center' },
-  actionText: { color: Colors.text, fontSize: 10, fontWeight: 'bold', marginTop: 4 },
-  actionTextDanger: { color: Colors.danger, fontSize: 10, fontWeight: 'bold', marginTop: 4 },
+  actionText: { color: Colors.text, fontSize: FontSize.xs, fontWeight: FontWeight.bold, marginTop: Spacing.xs },
+  actionTextDanger: { color: Colors.danger, fontSize: FontSize.xs, fontWeight: FontWeight.bold, marginTop: Spacing.xs },
 });

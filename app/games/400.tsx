@@ -445,7 +445,7 @@ export default function FourHundredScreen() {
                             )
                           }
                         >
-                          <Text style={{ color: "#fff", fontSize: 12, fontWeight: "bold" }}>
+                          <Text style={{ color: Colors.white, fontSize: 12, fontWeight: "bold" }}>
                             {passed ? "WON" : "BROKE"}
                           </Text>
                         </TouchableOpacity>
@@ -515,8 +515,8 @@ const ScoringCard = ({
           onPress={() => onSetResult(false)}
           style={[GameStyles.compactResultBtn, !passed ? GameStyles.brokeActive : GameStyles.buttonInactive]}
         >
-          <ThumbsDown size={14} color={!passed ? "#fff" : Colors.textMuted} />
-          <Text style={[GameStyles.toggleTextSmall, !passed && { color: "#fff" }]}>BROKE</Text>
+          <ThumbsDown size={14} color={!passed ? Colors.white : Colors.textMuted} />
+          <Text style={[GameStyles.toggleTextSmall, !passed && { color: Colors.white }]}>BROKE</Text>
           {!passed && <Text style={GameStyles.scorePreviewSmall}>-{points}</Text>}
         </TouchableOpacity>
         <TouchableOpacity
@@ -524,8 +524,8 @@ const ScoringCard = ({
           onPress={() => onSetResult(true)}
           style={[GameStyles.compactResultBtn, passed ? GameStyles.wonActive : GameStyles.buttonInactive]}
         >
-          <ThumbsUp size={14} color={passed ? "#fff" : Colors.textMuted} />
-          <Text style={[GameStyles.toggleTextSmall, passed && { color: "#fff" }]}>WON</Text>
+          <ThumbsUp size={14} color={passed ? Colors.white : Colors.textMuted} />
+          <Text style={[GameStyles.toggleTextSmall, passed && { color: Colors.white }]}>WON</Text>
           {passed && <Text style={GameStyles.scorePreviewSmall}>+{points}</Text>}
         </TouchableOpacity>
       </View>

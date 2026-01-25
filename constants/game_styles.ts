@@ -1,5 +1,5 @@
 import { StyleSheet } from "react-native";
-import { Colors, Spacing } from "./theme";
+import { Colors, Radius, Spacing } from "./theme";
 
 export const GameStyles = StyleSheet.create({
   // --- Layout ---
@@ -7,542 +7,541 @@ export const GameStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  statusRowFixed: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: Spacing.l, 
-    paddingVertical: Spacing.m, 
-    backgroundColor: Colors.background, 
-    borderBottomWidth: 1, 
-    borderBottomColor: Colors.border, 
-    zIndex: 5 
+  statusRowFixed: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.l,
+    paddingVertical: Spacing.m,
+    backgroundColor: Colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    zIndex: 5
   },
   scrollContent: {
-    paddingHorizontal: Spacing.l, 
-    paddingBottom: 120, 
+    paddingHorizontal: Spacing.l,
+    paddingBottom: 120,
     paddingTop: Spacing.xl
   },
-  
+
   // --- Typography ---
-  phaseTitle: { 
-    color: Colors.text, 
-    fontSize: 18, 
-    fontWeight: 'bold' 
+  phaseTitle: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: 'bold'
   },
-  // ADDED THIS
-  sectionTitle: { 
-    color: Colors.text, 
-    fontSize: 16, 
-    fontWeight: 'bold' 
+  sectionTitle: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: 'bold'
   },
-  sectionLabel: { 
-    color: Colors.textMuted, 
-    fontSize: 12, 
-    fontWeight: 'bold', 
-    textTransform: 'uppercase', 
-    marginBottom: Spacing.m 
+  sectionLabel: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    marginBottom: Spacing.m
   },
-  divider: { 
-    height: 1, 
-    backgroundColor: 'rgba(255,255,255,0.1)', 
-    marginVertical: 12 
+  divider: {
+    height: 1,
+    backgroundColor: Colors.overlayLight,
+    marginVertical: Spacing.m
   },
 
   // --- Badges ---
-  badge: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 10, 
-    paddingVertical: 4, 
-    borderRadius: 12, 
-    borderWidth: 1, 
-    gap: 4 
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.s,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    gap: Spacing.xs
   },
-  badgeSuccess: { 
-    backgroundColor: 'rgba(15, 157, 88, 0.1)', 
-    borderColor: Colors.primary 
+  badgeSuccess: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary
   },
-  badgeError: { 
-    backgroundColor: 'rgba(255, 82, 82, 0.1)', 
-    borderColor: Colors.danger 
+  badgeError: {
+    backgroundColor: Colors.dangerLight,
+    borderColor: Colors.danger
   },
-  badgeNeutral: { 
-    backgroundColor: Colors.surfaceInner, 
-    borderColor: Colors.border 
+  badgeNeutral: {
+    backgroundColor: Colors.surfaceInner,
+    borderColor: Colors.border
   },
-  badgeQS: { 
-    backgroundColor: 'rgba(255, 255, 255, 0.1)', 
-    borderColor: 'rgba(255, 255, 255, 0.3)' 
+  badgeQS: {
+    backgroundColor: Colors.overlayLight,
+    borderColor: 'rgba(255, 255, 255, 0.3)'
   },
-  badgeTen: { 
-    backgroundColor: 'rgba(255, 82, 82, 0.1)', 
-    borderColor: 'rgba(255, 82, 82, 0.3)' 
+  badgeTen: {
+    backgroundColor: Colors.dangerLight,
+    borderColor: 'rgba(255, 82, 82, 0.3)'
   },
-  badgeText: { 
-    fontSize: 12, 
-    fontWeight: 'bold' 
+  badgeText: {
+    fontSize: 12,
+    fontWeight: 'bold'
   },
 
   // --- Footers & Buttons ---
-  footer: { 
-    position: 'absolute', 
-    bottom: 0, 
-    left: 0, 
-    right: 0, 
-    padding: Spacing.l, 
-    backgroundColor: Colors.background, 
-    borderTopWidth: 1, 
-    borderTopColor: Colors.border 
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: Spacing.l,
+    backgroundColor: Colors.background,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border
   },
-  disabledButton: { 
-    backgroundColor: Colors.surfaceLight, 
-    shadowOpacity: 0, 
-    elevation: 0 
+  disabledButton: {
+    backgroundColor: Colors.surfaceLight,
+    shadowOpacity: 0,
+    elevation: 0
   },
 
   // --- Game Over View ---
-  gameOverContainer: { 
-    flex: 1, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 20 
+  gameOverContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xl
   },
-  gameOverText: { 
-    color: Colors.primary, 
-    fontSize: 24, 
-    fontWeight: 'bold' 
+  gameOverText: {
+    color: Colors.primary,
+    fontSize: 24,
+    fontWeight: 'bold'
   },
 
   // --- Modals ---
-  modalOverlay: { 
-    flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.9)', 
-    justifyContent: 'center', 
-    padding: 10 
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: Colors.overlayDark,
+    justifyContent: 'center',
+    padding: Spacing.s
   },
-  modalContent: { 
-    backgroundColor: Colors.surface, 
-    borderRadius: 16, 
-    padding: 20, 
-    paddingBottom: 30 
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.xl,
+    paddingBottom: 30
   },
-  modalTitle: { 
-    color: Colors.text, 
-    fontSize: 20, 
-    fontWeight: 'bold', 
-    marginBottom: 20, 
-    textAlign: 'center' 
+  modalTitle: {
+    color: Colors.text,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: Spacing.xl,
+    textAlign: 'center'
   },
-  modalStatusRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'center', 
-    gap: 12, 
-    marginBottom: 20 
+  modalStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Spacing.m,
+    marginBottom: Spacing.xl
   },
-  modalFooter: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    marginTop: 20, 
-    paddingTop: 20, 
-    borderTopWidth: 1, 
-    borderTopColor: Colors.border 
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: Spacing.xl,
+    paddingTop: Spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border
   },
-  modalCancel: { 
-    padding: 12 
+  modalCancel: {
+    padding: Spacing.m
   },
-  modalSave: { 
-    backgroundColor: Colors.primary, 
-    padding: 12, 
-    borderRadius: 8 
+  modalSave: {
+    backgroundColor: Colors.primary,
+    padding: Spacing.m,
+    borderRadius: Radius.sm
   },
 
   // --- Tarneeb/400 Specific ---
-  grid: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    gap: 12 
+  grid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.m
   },
-  playerOption: { 
-    flex: 1, 
-    backgroundColor: Colors.surface, 
-    padding: 20, 
-    borderRadius: 16, 
-    borderWidth: 1, 
-    borderColor: Colors.border, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  playerOption: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    padding: Spacing.xl,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  playerOptionActive: { 
-    borderColor: Colors.primary, 
-    backgroundColor: 'rgba(15, 157, 88, 0.1)' 
+  playerOptionActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryLight
   },
-  teamNameBig: { 
-    color: Colors.text, 
-    fontSize: 20, 
-    fontWeight: 'bold', 
-    marginBottom: 4 
+  teamNameBig: {
+    color: Colors.text,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: Spacing.xs
   },
-  teamPlayers: { 
-    color: Colors.textMuted, 
-    fontSize: 12, 
-    textAlign: 'center' 
+  teamPlayers: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    textAlign: 'center'
   },
-  bidGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    gap: 12, 
-    justifyContent: 'center' 
+  bidGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.m,
+    justifyContent: 'center'
   },
-  bidOption: { 
-    width: 50, 
-    height: 50, 
-    borderRadius: 25, 
-    backgroundColor: Colors.surfaceLight, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderWidth: 1, 
-    borderColor: Colors.border 
+  bidOption: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: Colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border
   },
-  bidOptionActive: { 
-    backgroundColor: Colors.primary, 
-    borderColor: Colors.primary 
+  bidOptionActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary
   },
-  bidOptionText: { 
-    color: Colors.text, 
-    fontWeight: 'bold', 
-    fontSize: 18 
+  bidOptionText: {
+    color: Colors.text,
+    fontWeight: 'bold',
+    fontSize: 18
   },
-  scoringContainer: { 
-    gap: 20 
+  scoringContainer: {
+    gap: Spacing.xl
   },
-  counterCard: { 
-    backgroundColor: Colors.surface, 
-    borderRadius: 20, 
-    padding: 24, 
-    alignItems: 'center', 
-    borderWidth: 1, 
-    borderColor: Colors.border 
+  counterCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border
   },
-  counterLabel: { 
-    color: Colors.textMuted, 
-    fontSize: 14, 
-    textTransform: 'uppercase', 
-    fontWeight: 'bold', 
-    marginBottom: 20 
+  counterLabel: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    textTransform: 'uppercase',
+    fontWeight: 'bold',
+    marginBottom: Spacing.xl
   },
-  counterRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 32 
+  counterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xxl
   },
-  counterBtn: { 
-    width: 64, 
-    height: 64, 
-    borderRadius: 32, 
-    backgroundColor: Colors.surfaceLight, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  counterBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  counterBtnText: { 
-    color: Colors.text, 
-    fontSize: 32, 
-    marginTop: -4 
+  counterBtnText: {
+    color: Colors.text,
+    fontSize: 32,
+    marginTop: -4
   },
-  counterValue: { 
-    color: Colors.text, 
-    fontSize: 56, 
-    fontWeight: '800', 
-    fontVariant: ['tabular-nums'], 
-    minWidth: 80, 
-    textAlign: 'center' 
+  counterValue: {
+    color: Colors.text,
+    fontSize: 56,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+    minWidth: 80,
+    textAlign: 'center'
   },
-  previewCard: { 
-    borderRadius: 16, 
-    padding: 16, 
-    borderWidth: 1 
+  previewCard: {
+    borderRadius: Radius.lg,
+    padding: Spacing.l,
+    borderWidth: 1
   },
-  previewSuccess: { 
-    backgroundColor: 'rgba(15, 157, 88, 0.1)', 
-    borderColor: 'rgba(15, 157, 88, 0.3)' 
+  previewSuccess: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: 'rgba(15, 157, 88, 0.3)'
   },
-  previewFail: { 
-    backgroundColor: 'rgba(255, 82, 82, 0.1)', 
-    borderColor: 'rgba(255, 82, 82, 0.3)' 
+  previewFail: {
+    backgroundColor: Colors.dangerLight,
+    borderColor: 'rgba(255, 82, 82, 0.3)'
   },
-  previewTitle: { 
-    color: Colors.text, 
-    fontSize: 18, 
-    fontWeight: 'bold', 
-    marginLeft: 12 
+  previewTitle: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: Spacing.m
   },
-  previewSub: { 
-    color: Colors.textMuted, 
-    fontSize: 14, 
-    fontWeight: '600' 
+  previewSub: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600'
   },
-  previewSubScore: { 
-    color: Colors.text, 
-    fontSize: 18, 
-    fontWeight: 'bold' 
+  previewSubScore: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: 'bold'
   },
-  biddingGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    justifyContent: 'space-between', 
-    gap: 12 
+  biddingGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: Spacing.m
   },
-  biddingCard: { 
-    width: '48%', 
-    backgroundColor: Colors.surface, 
-    borderRadius: 16, 
-    padding: 12, 
-    borderWidth: 1, 
-    borderColor: Colors.border 
+  biddingCard: {
+    width: '48%',
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.m,
+    borderWidth: 1,
+    borderColor: Colors.border
   },
-  playerNameSmall: { 
-    color: Colors.text, 
-    fontSize: 16, 
-    fontWeight: '600', 
-    marginBottom: 2, 
-    flex: 1 
+  playerNameSmall: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: Spacing.xxs,
+    flex: 1
   },
-  minBidTextSmall: { 
-    color: Colors.textMuted, 
-    fontSize: 10 
+  minBidTextSmall: {
+    color: Colors.textMuted,
+    fontSize: 10
   },
-  controlsRowCompact: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    marginTop: 4 
+  controlsRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.xs
   },
-  controlBtnSmall: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
-    backgroundColor: Colors.surfaceLight, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  controlBtnSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  controlBtnTextSmall: { 
-    color: Colors.text, 
-    fontSize: 20, 
-    lineHeight: 22, 
-    fontWeight: 'bold' 
+  controlBtnTextSmall: {
+    color: Colors.text,
+    fontSize: 20,
+    lineHeight: 22,
+    fontWeight: 'bold'
   },
-  bidValueSmall: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    color: Colors.text 
+  bidValueSmall: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.text
   },
-  scoringCardCompact: { 
-    backgroundColor: Colors.surface, 
-    borderRadius: 12, 
-    paddingVertical: 12, 
-    paddingHorizontal: 12, 
-    borderWidth: 1, 
-    borderColor: Colors.border, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    height: 64 
+  scoringCardCompact: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.m,
+    paddingHorizontal: Spacing.m,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 64
   },
-  scoringInfo: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12, 
-    flex: 1 
+  scoringInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.m,
+    flex: 1
   },
-  scoringButtonsContainer: { 
-    flexDirection: 'row', 
-    gap: 8 
+  scoringButtonsContainer: {
+    flexDirection: 'row',
+    gap: Spacing.s
   },
-  compactResultBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 8, 
-    paddingHorizontal: 10, 
-    borderRadius: 8, 
-    borderWidth: 1, 
-    gap: 4, 
-    minWidth: 80, 
-    justifyContent: 'center' 
+  compactResultBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.s,
+    paddingHorizontal: Spacing.s,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    gap: Spacing.xs,
+    minWidth: 80,
+    justifyContent: 'center'
   },
-  buttonInactive: { 
-    backgroundColor: Colors.surfaceInner, 
-    borderColor: Colors.border 
+  buttonInactive: {
+    backgroundColor: Colors.surfaceInner,
+    borderColor: Colors.border
   },
-  brokeActive: { 
-    backgroundColor: 'rgba(255, 82, 82, 0.15)', 
-    borderColor: Colors.danger 
+  brokeActive: {
+    backgroundColor: Colors.dangerLight,
+    borderColor: Colors.danger
   },
-  wonActive: { 
-    backgroundColor: 'rgba(15, 157, 88, 0.15)', 
-    borderColor: Colors.primary 
+  wonActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary
   },
-  toggleTextSmall: { 
-    fontSize: 11, 
-    fontWeight: 'bold', 
-    color: Colors.textMuted 
+  toggleTextSmall: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: Colors.textMuted
   },
-  scorePreviewSmall: { 
-    fontSize: 11, 
-    fontWeight: 'bold', 
-    color: '#fff' 
+  scorePreviewSmall: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: Colors.white
   },
-  editRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    marginBottom: 16 
+  editRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.l
   },
-  editName: { 
-    color: Colors.text, 
-    width: 80, 
-    fontSize: 14, 
-    fontWeight: '600' 
+  editName: {
+    color: Colors.text,
+    width: 80,
+    fontSize: 14,
+    fontWeight: '600'
   },
-  editBtn: { 
-    color: Colors.text, 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    paddingHorizontal: 10 
+  editBtn: {
+    color: Colors.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+    paddingHorizontal: Spacing.s
   },
-  editVal: { 
-    color: Colors.text, 
-    fontSize: 18, 
-    fontWeight: 'bold', 
-    width: 30, 
-    textAlign: 'center' 
+  editVal: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    width: 30,
+    textAlign: 'center'
   },
-  editToggle: { 
-    paddingVertical: 8, 
-    paddingHorizontal: 16, 
-    borderRadius: 8, 
-    minWidth: 80, 
-    alignItems: 'center' 
+  editToggle: {
+    paddingVertical: Spacing.s,
+    paddingHorizontal: Spacing.l,
+    borderRadius: Radius.sm,
+    minWidth: 80,
+    alignItems: 'center'
   },
 
-  // --- Leekha Specific (ADDED THESE) ---
-  playerName: { 
-    color: Colors.text, 
-    fontSize: 18, 
-    fontWeight: '600', 
-    maxWidth: 120 
+  // --- Leekha Specific ---
+  playerName: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: '600',
+    maxWidth: 120
   },
-  roundPoints: { 
-    color: Colors.textMuted, 
-    fontSize: 16, 
-    fontWeight: '600' 
+  roundPoints: {
+    color: Colors.textMuted,
+    fontSize: 16,
+    fontWeight: '600'
   },
-  compactCard: { 
-    backgroundColor: Colors.surface, 
-    borderRadius: 12, 
-    padding: 12, 
-    marginBottom: 8, 
-    borderWidth: 1, 
-    borderColor: Colors.border, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    height: 80 
+  compactCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.m,
+    marginBottom: Spacing.s,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 80
   },
-  compactInfo: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12 
+  compactInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.m
   },
-  compactControls: { 
-    flexDirection: 'row', 
-    alignItems: 'center' 
+  compactControls: {
+    flexDirection: 'row',
+    alignItems: 'center'
   },
-  compactCounter: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.surfaceInner, 
-    borderRadius: 8, 
-    padding: 4, 
-    marginRight: 10 
+  compactCounter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceInner,
+    borderRadius: Radius.sm,
+    padding: Spacing.xs,
+    marginRight: Spacing.s
   },
-  compactBtn: { 
-    width: 40, 
-    height: 40, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    backgroundColor: Colors.surfaceLight, 
-    borderRadius: 8 
+  compactBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: Radius.sm
   },
-  compactBtnText: { 
-    color: Colors.text, 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    marginTop: -2 
+  compactBtnText: {
+    color: Colors.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: -2
   },
-  compactHeartVal: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    width: 45, 
-    gap: 4 
+  compactHeartVal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 45,
+    gap: Spacing.xs
   },
-  compactValText: { 
-    color: Colors.text, 
-    fontSize: 18, 
-    fontWeight: 'bold' 
+  compactValText: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: 'bold'
   },
-  compactSpecialBtn: { 
-    width: 48, 
-    height: 44, 
-    borderRadius: 10, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderWidth: 1 
+  compactSpecialBtn: {
+    width: 48,
+    height: 44,
+    borderRadius: Radius.s,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1
   },
-  specialCardInactive: { 
-    backgroundColor: Colors.surfaceInner, 
-    borderColor: Colors.border 
+  specialCardInactive: {
+    backgroundColor: Colors.surfaceInner,
+    borderColor: Colors.border
   },
-  compactSpecialText: { 
-    fontSize: 14, 
-    fontWeight: 'bold', 
-    color: Colors.textMuted 
+  compactSpecialText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: Colors.textMuted
   },
-  qsActive: { 
-    backgroundColor: 'rgba(255, 255, 255, 0.1)', 
-    borderColor: Colors.text 
+  qsActive: {
+    backgroundColor: Colors.overlayLight,
+    borderColor: Colors.text
   },
-  tenActive: { 
-    backgroundColor: 'rgba(255, 82, 82, 0.15)', 
-    borderColor: Colors.danger 
+  tenActive: {
+    backgroundColor: Colors.dangerLight,
+    borderColor: Colors.danger
   },
-  lastRoundIcons: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 4, 
-    marginTop: 4, 
-    height: 16 
+  lastRoundIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+    height: 16
   },
-  iconQS: { 
-    color: Colors.text, 
-    fontSize: 10, 
-    fontWeight: 'bold' 
+  iconQS: {
+    color: Colors.text,
+    fontSize: 10,
+    fontWeight: 'bold'
   },
-  iconTen: { 
-    color: Colors.danger, 
-    fontSize: 10, 
-    fontWeight: 'bold' 
+  iconTen: {
+    color: Colors.danger,
+    fontSize: 10,
+    fontWeight: 'bold'
   },
-  iconHeartContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 2 
+  iconHeartContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xxs
   },
-  iconHeartText: { 
-    color: Colors.danger, 
-    fontSize: 10, 
-    fontWeight: 'bold' 
+  iconHeartText: {
+    color: Colors.danger,
+    fontSize: 10,
+    fontWeight: 'bold'
   }
 });

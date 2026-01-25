@@ -452,7 +452,7 @@ const BiddingPhase = ({ callingTeam, setCallingTeam, bidAmount, setBidAmount, se
           }}
           activeOpacity={0.8}
         >
-          <Text style={[GameStyles.bidOptionText, bidAmount === num && { color: '#000' }, isModal && {fontSize: 14}]}>{num}</Text>
+          <Text style={[GameStyles.bidOptionText, bidAmount === num && { color: Colors.black }, isModal && {fontSize: 14}]}>{num}</Text>
         </TouchableOpacity>
       ))}
     </View>

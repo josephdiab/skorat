@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity } from "react-native";
-import { Colors, Spacing } from "../constants/theme";
+import { Colors, Shadows, Spacing } from "../constants/theme";
 
 type FabProps = {
   onPress: () => void;
@@ -23,11 +23,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    ...Shadows.md,
   },
   fabIcon: {
     fontSize: 30,
