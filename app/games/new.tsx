@@ -273,7 +273,7 @@ const localStyles = StyleSheet.create({
   segmentBtn: { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 16 },
   segmentText: { color: Colors.textSecondary, fontWeight: "600", fontSize: 13 },
   gameOption: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 4, borderRadius: 12, backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border, justifyContent: 'center' },
-  gameOptionActive: { borderColor: Colors.primary, backgroundColor: 'rgba(15, 157, 88, 0.15)' },
+  gameOptionActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
   gameOptionText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 14 },
   gameOptionTextActive: { color: Colors.primary, fontWeight: '700' }
 });

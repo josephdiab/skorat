@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Colors } from "../constants/theme";
 
 export default function RootLayout() {
   // 2. Load the new font
@@ -13,18 +14,18 @@ export default function RootLayout() {
   });
 
   if (!fontsLoaded) {
-    return <View style={{ flex: 1, backgroundColor: "#111111" }} />; 
+    return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
   }
 
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.container}>
-        <StatusBar style="light" backgroundColor="#111111" />
-        <Stack 
-          screenOptions={{ 
+        <StatusBar style="light" backgroundColor={Colors.background} />
+        <Stack
+          screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: "#111111" }
-          }} 
+            contentStyle: { backgroundColor: Colors.background }
+          }}
         />
       </GestureHandlerRootView>
     </SafeAreaProvider>
@@ -34,6 +35,6 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#111111",
+    backgroundColor: Colors.background,
   },
 });

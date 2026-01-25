@@ -10,7 +10,7 @@ import {
   UIManager,
   View,
 } from "react-native";
-import { Colors, GlobalStyles, Spacing } from "../constants/theme";
+import { Colors, FontSize, FontWeight, GlobalStyles, Radius, Shadows, Spacing } from "../constants/theme";
 import { Player, RoundHistory } from "../constants/types";
 
 // Enable LayoutAnimation for Android
@@ -190,28 +190,24 @@ const styles = StyleSheet.create({
   scoreboardContainer: {
     paddingHorizontal: Spacing.l,
     paddingTop: Spacing.s,
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
     zIndex: 10,
   },
   scoreboardHeader: {
     backgroundColor: Colors.surface,
-    borderRadius: 20,
+    borderRadius: Radius.xl,
     padding: Spacing.l,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    ...Shadows.md,
   },
   scoreGrid: { flexDirection: "row", alignItems: "center" },
   columnHeader: {
     flex: 1,
     textAlign: "center",
     color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
     textTransform: "uppercase",
     marginBottom: Spacing.s,
   },
@@ -219,8 +215,8 @@ const styles = StyleSheet.create({
   totalScore: {
     textAlign: "center",
     color: Colors.text,
-    fontSize: 42,
-    fontWeight: "800",
+    fontSize: FontSize.jumbo,
+    fontWeight: FontWeight.extrabold,
     lineHeight: 48,
   },
   historyCell: {
@@ -228,26 +224,26 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: Colors.textMuted,
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: FontWeight.normal,
   },
   editButton: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 4,
+    padding: Spacing.xs,
     backgroundColor: Colors.surfaceLight,
-    borderRadius: 8,
-    paddingHorizontal: 8,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.s,
   },
   editButtonActive: {
-    backgroundColor: "rgba(15, 157, 88, 0.15)",
+    backgroundColor: Colors.primaryLight,
     borderColor: Colors.primary,
     borderWidth: 1,
   },
   editText: {
     color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: "bold",
-    marginLeft: 4,
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    marginLeft: Spacing.xs,
   },
   divider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.m },
   roundNumContainer: {
@@ -259,13 +255,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   roundNum: {
-    fontSize: 10,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     opacity: 0.5,
   },
   historyRowEditing: {
     backgroundColor: Colors.surfaceLight,
-    borderRadius: 8,
+    borderRadius: Radius.sm,
   },
   emptyText: {
     textAlign: "center",

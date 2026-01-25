@@ -3,7 +3,7 @@ import { RotateCcw, Trophy } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import ConfettiCannon from 'react-native-confetti-cannon';
-import { Colors } from "../constants/theme";
+import { Colors, FontSize, FontWeight, Radius, Shadows, Spacing } from "../constants/theme";
 
 type GameOverScreenProps = {
   winners: string;
@@ -14,9 +14,9 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winners, onRemat
   return (
     <View style={styles.container}>
       {/* 1. Regular Confetti Cannon */}
-      <ConfettiCannon 
-        count={200} 
-        origin={{x: -20, y: 0}} 
+      <ConfettiCannon
+        count={200}
+        origin={{x: -20, y: 0}}
         autoStart={true}
         fadeOut={true}
         fallSpeed={3000}
@@ -26,12 +26,12 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winners, onRemat
       <View style={styles.card}>
         <View style={styles.trophyGlow} />
         <View style={styles.trophyContainer}>
-          <Trophy size={64} color="#FFD700" fill="#FFD700" />
+          <Trophy size={64} color={Colors.gold} fill={Colors.gold} />
         </View>
-        
+
         <Text style={styles.title}>CONGRATULATIONS</Text>
         <Text style={styles.winnerText}>{winners}</Text>
-        
+
         <View style={styles.badge}>
           <Text style={styles.badgeText}>WON THE MATCH</Text>
         </View>
@@ -40,12 +40,12 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winners, onRemat
       {/* 3. Modern Rematch Button */}
       <TouchableOpacity activeOpacity={0.8} onPress={onRematch}>
         <LinearGradient
-          colors={['#0f9d58', '#0b7541']} // Green Gradient
+          colors={[Colors.primary, Colors.primaryDark]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.button}
         >
-          <RotateCcw size={20} color="#fff" />
+          <RotateCcw size={20} color={Colors.white} />
           <Text style={styles.buttonText}>START REMATCH</Text>
         </LinearGradient>
       </TouchableOpacity>
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 40,
+    gap: Spacing.xxxl,
     paddingBottom: 50,
   },
   card: {
@@ -74,66 +74,59 @@ const styles = StyleSheet.create({
     top: -40,
   },
   trophyContainer: {
-    marginBottom: 24,
-    shadowColor: '#FFD700',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 10,
+    marginBottom: Spacing.xl,
+    ...Shadows.glow(Colors.gold),
     transform: [{ scale: 1.1 }],
   },
   title: {
     color: Colors.textSecondary,
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.bold,
     letterSpacing: 4,
-    marginBottom: 12,
+    marginBottom: Spacing.m,
   },
   winnerText: {
     color: Colors.text,
-    fontSize: 32,
-    fontWeight: '900',
+    fontSize: FontSize.hero,
+    fontWeight: FontWeight.black,
     textAlign: 'center',
-    marginBottom: 12,
-    textShadowColor: 'rgba(0,0,0,0.5)',
+    marginBottom: Spacing.m,
+    textShadowColor: Colors.overlayDark,
     textShadowOffset: { width: 0, height: 4 },
     textShadowRadius: 4,
-    paddingHorizontal: 20,
+    paddingHorizontal: Spacing.xl,
   },
   badge: {
     backgroundColor: 'rgba(255, 215, 0, 0.1)',
-    paddingHorizontal: 16,
+    paddingHorizontal: Spacing.l,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: Radius.xl,
     borderWidth: 1,
     borderColor: 'rgba(255, 215, 0, 0.3)',
   },
   badgeText: {
-    color: '#FFD700',
-    fontSize: 12,
-    fontWeight: '800',
+    color: Colors.gold,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.extrabold,
     letterSpacing: 1,
   },
   button: {
-    paddingVertical: 18,
-    paddingHorizontal: 40,
+    paddingVertical: Spacing.l,
+    paddingHorizontal: Spacing.xxxl,
     borderRadius: 30,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: Spacing.m,
     zIndex: 10,
+    ...Shadows.lg,
     shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: Colors.overlayLight,
   },
   buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
+    color: Colors.white,
+    fontSize: FontSize.xl,
+    fontWeight: FontWeight.extrabold,
     letterSpacing: 1,
   },
 });
