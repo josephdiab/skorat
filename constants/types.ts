@@ -1,8 +1,12 @@
 // constants/types.ts
 
+// Default avatar for new players (preparing for future Profile feature)
+export const DEFAULT_AVATAR = "👤";
+
 export type UserProfile = {
   id: string;
   name: string;
+  avatar: string;
 };
 
 export type Player = {

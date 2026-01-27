@@ -4,12 +4,12 @@ import {
   ActivityIndicator,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { PlayerAutocomplete } from "../../components/player_autocomplete";
 import { GAMES } from "../../constants/games";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
 import { UserProfile } from "../../constants/types";
@@ -22,6 +22,7 @@ export default function NewGameScreen() {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [scoreLimit, setScoreLimit] = useState(41);
   const [players, setPlayers] = useState<string[]>(["", "", "", ""]);
+  const [selectedProfiles, setSelectedProfiles] = useState<(UserProfile | null)[]>([null, null, null, null]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- Derived State ---
@@ -44,26 +45,40 @@ export default function NewGameScreen() {
     const copy = [...players];
     copy[index] = text;
     setPlayers(copy);
+
+    // Clear selected profile if user manually edits the text
+    const newProfiles = [...selectedProfiles];
+    if (newProfiles[index] && newProfiles[index]!.name !== text) {
+      newProfiles[index] = null;
+      setSelectedProfiles(newProfiles);
+    }
+  };
+
+  const handleSelectPlayer = (index: number, profile: UserProfile) => {
+    const newProfiles = [...selectedProfiles];
+    newProfiles[index] = profile;
+    setSelectedProfiles(newProfiles);
   };
 
   const renderPlayerInput = (index: number) => {
-    let placeholder = `Player ${index + 1}`;
-    
+    // Descending zIndex for proper dropdown stacking (upper inputs on top)
+    const zIndex = 4 - index;
+
     return (
-      <View 
-        key={index} 
+      <View
+        key={index}
         style={[
-          localStyles.gridItem, 
-          mode === 'solo' && { width: '100%' }
+          localStyles.gridItem,
+          mode === 'solo' && { width: '100%' },
+          { zIndex }
         ]}
       >
-        <TextInput
-          style={GlobalStyles.input}
-          placeholder={placeholder}
-          placeholderTextColor={Colors.textMuted} 
+        <PlayerAutocomplete
           value={players[index]}
           onChangeText={(text) => updatePlayer(index, text)}
-          autoCapitalize="words"
+          onSelectPlayer={(profile) => handleSelectPlayer(index, profile)}
+          placeholder={`Player ${index + 1}`}
+          zIndex={zIndex}
         />
       </View>
     );
@@ -76,14 +91,22 @@ export default function NewGameScreen() {
 
     try {
       // 1. Resolve Players SEQUENTIALLY
-      // We CANNOT use Promise.all here because reading/writing to AsyncStorage 
+      // We CANNOT use Promise.all here because reading/writing to AsyncStorage
       // creates a race condition where players overwrite each other in the database.
       // A loop ensures Player 1 is saved before Player 2 tries to read the DB.
       const resolvedPlayers: UserProfile[] = [];
-      
-      for (const name of players) {
-        const profile = await PlayerStorage.getOrCreate(name);
-        resolvedPlayers.push(profile);
+
+      for (let i = 0; i < players.length; i++) {
+        const name = players[i];
+
+        // If user selected from dropdown and name matches, use that profile directly
+        if (selectedProfiles[i] && selectedProfiles[i]!.name === name) {
+          resolvedPlayers.push(selectedProfiles[i]!);
+        } else {
+          // Otherwise, do the normal getOrCreate flow
+          const profile = await PlayerStorage.getOrCreate(name);
+          resolvedPlayers.push(profile);
+        }
       }
 
       // 2. Serialize for Params

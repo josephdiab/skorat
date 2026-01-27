@@ -1,7 +1,7 @@
 // --- START OF FILE: services\player_storage.ts ---
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ENABLE_LOGS } from '../constants/config'; // Import Config
-import { UserProfile } from '../constants/types';
+import { ENABLE_LOGS } from '../constants/config';
+import { DEFAULT_AVATAR, UserProfile } from '../constants/types';
 import { Logger } from './logger';
 
 const PLAYER_KEY = '@skorat_players_v1';
@@ -84,6 +84,7 @@ export const PlayerStorage = {
       const normalizedProfile: UserProfile = {
         id: profile.id.trim(),
         name: profile.name.trim(),
+        avatar: profile.avatar || DEFAULT_AVATAR,
       };
 
       // Get existing profiles
@@ -204,6 +205,7 @@ export const PlayerStorage = {
       const newProfile: UserProfile = {
         id: `u_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
         name: cleanName,
+        avatar: DEFAULT_AVATAR,
       };
       await PlayerStorage.save(newProfile);
       Logger.info("STORAGE", `Created new profile for "${cleanName}": ${newProfile.id}`);
@@ -217,6 +219,25 @@ export const PlayerStorage = {
         error: e?.message || String(e),
       });
       throw new Error(`Failed to get or create profile: ${e?.message || String(e)}`);
+    }
+  },
+
+  // Search profiles by name prefix (for autocomplete)
+  searchByPrefix: async (prefix: string, limit: number = 5): Promise<UserProfile[]> => {
+    if (!prefix.trim()) return [];
+
+    try {
+      const all = await PlayerStorage.getAll();
+      const searchTerm = prefix.trim().toLowerCase();
+
+      return all
+        .filter(p => p.name.toLowerCase().includes(searchTerm))
+        .slice(0, limit);
+    } catch (e: any) {
+      Logger.error("STORAGE", `Failed to search profiles by prefix "${prefix}"`, {
+        error: e?.message || String(e),
+      });
+      return [];
     }
   },
 
