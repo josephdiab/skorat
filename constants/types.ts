@@ -1,8 +1,12 @@
 // constants/types.ts
 
+// Default avatar for new players (preparing for future Profile feature)
+export const DEFAULT_AVATAR = "👤";
+
 export type UserProfile = {
   id: string;
   name: string;
+  avatar: string;
 };
 
 export type Player = {
@@ -15,7 +19,7 @@ export type Player = {
 };
 
 export type TarneebRoundData = {
-  kind: 'tarneeb';
+  kind: "tarneeb";
   bid: number;
   tricksTaken: number;
   isCallingTeamMember: boolean; // <--- RENAMED (Semantically clearer)
@@ -24,7 +28,7 @@ export type TarneebRoundData = {
 };
 
 export type LeekhaRoundData = {
-  kind: 'leekha';
+  kind: "leekha";
   heartsTaken: number;
   hasQS: boolean;
   hasTen: boolean;
@@ -32,13 +36,16 @@ export type LeekhaRoundData = {
 };
 
 export type FourHundredRoundData = {
-  kind: '400';
+  kind: "400";
   bid: number;
   won: boolean;
   score: number; // <--- ADDED BACK (For integrity/performance)
 };
 
-export type GameRoundDetails = TarneebRoundData | LeekhaRoundData | FourHundredRoundData;
+export type GameRoundDetails =
+  | TarneebRoundData
+  | LeekhaRoundData
+  | FourHundredRoundData;
 
 export type RoundHistory = {
   roundNum: number;
@@ -50,11 +57,11 @@ export type GameState = {
   schemaVersion: 1;
   id: string;
   instanceId: string;
-  gameType: 'leekha' | 'tarneeb' | '400';
-  mode: 'solo' | 'teams';
+  gameType: "leekha" | "tarneeb" | "400";
+  mode: "solo" | "teams";
   title: string;
   lastPlayed: string;
-  status: 'active' | 'completed';
+  status: "active" | "completed";
   players: Player[];
   history: RoundHistory[];
   scoreLimit?: number;
