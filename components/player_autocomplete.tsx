@@ -16,7 +16,7 @@ import {
   Shadows,
   Spacing,
 } from "../constants/theme";
-import { UserProfile } from "../constants/types";
+import { DEFAULT_AVATAR, UserProfile } from "../constants/types";
 import { PlayerStorage } from "../services/player_storage";
 
 type PlayerAutocompleteProps = {
@@ -106,7 +106,7 @@ export const PlayerAutocomplete: React.FC<PlayerAutocompleteProps> = ({
                 onPress={() => handleSelectSuggestion(profile)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.avatar}>{profile.avatar}</Text>
+                <Text style={styles.avatar}>{profile.avatar || DEFAULT_AVATAR}</Text>
                 <Text style={styles.name} numberOfLines={1}>
                   {profile.name}
                 </Text>
