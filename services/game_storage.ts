@@ -465,4 +465,20 @@ export const GameStorage = {
       throw new Error(`Failed to verify storage integrity: ${e?.message || String(e)}`);
     }
   },
+
+  /**
+   * Clear ALL games from storage
+   */
+  clearAll: async () => {
+    try {
+      Logger.info("STORAGE", "Clearing ALL games...");
+      await AsyncStorage.removeItem(STORAGE_KEY);
+      Logger.info("STORAGE", "All games cleared");
+    } catch (e: any) {
+      Logger.error("STORAGE", "Failed to clear all games", {
+        error: e?.message || String(e),
+      });
+      throw new Error(`Failed to clear games: ${e?.message || String(e)}`);
+    }
+  },
 };
