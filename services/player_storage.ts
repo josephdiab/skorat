@@ -1,10 +1,10 @@
 // --- START OF FILE: services\player_storage.ts ---
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ENABLE_LOGS } from '../constants/config';
-import { DEFAULT_AVATAR, UserProfile } from '../constants/types';
-import { Logger } from './logger';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ENABLE_LOGS } from "../constants/config";
+import { DEFAULT_AVATAR, UserProfile } from "../constants/types";
+import { Logger } from "./logger";
 
-const PLAYER_KEY = '@skorat_players_v1';
+const PLAYER_KEY = "@skorat_players_v1";
 
 export const PlayerStorage = {
   // Get all available profiles
@@ -28,8 +28,8 @@ export const PlayerStorage = {
   findByName: async (name: string): Promise<UserProfile | undefined> => {
     const all = await PlayerStorage.getAll();
     const searchName = name.trim().toLowerCase();
-    
-    return all.find(p => p.name.trim().toLowerCase() === searchName);
+
+    return all.find((p) => p.name.trim().toLowerCase() === searchName);
   },
 
   // Create or Update a profile
@@ -39,14 +39,14 @@ export const PlayerStorage = {
       const validationErrors: string[] = [];
 
       // Validate profile object exists
-      if (!profile || typeof profile !== 'object') {
+      if (!profile || typeof profile !== "object") {
         throw new Error("Profile must be a valid object");
       }
 
       // Validate id
       if (!profile.id) {
         validationErrors.push("Profile id is required");
-      } else if (typeof profile.id !== 'string') {
+      } else if (typeof profile.id !== "string") {
         validationErrors.push("Profile id must be a string");
       } else if (profile.id.trim().length === 0) {
         validationErrors.push("Profile id cannot be empty");
@@ -57,7 +57,7 @@ export const PlayerStorage = {
       // Validate name
       if (!profile.name) {
         validationErrors.push("Profile name is required");
-      } else if (typeof profile.name !== 'string') {
+      } else if (typeof profile.name !== "string") {
         validationErrors.push("Profile name must be a string");
       } else {
         const trimmedName = profile.name.trim();
@@ -89,15 +89,19 @@ export const PlayerStorage = {
 
       // Get existing profiles
       const profiles = await PlayerStorage.getAll();
-      
+
       // Check if this is an update or create
-      const existingIndex = profiles.findIndex(p => p.id === normalizedProfile.id);
+      const existingIndex = profiles.findIndex(
+        (p) => p.id === normalizedProfile.id,
+      );
       const isUpdate = existingIndex >= 0;
 
       // For new profiles, check for duplicate names (case-insensitive)
       if (!isUpdate) {
         const duplicateName = profiles.find(
-          p => p.name.trim().toLowerCase() === normalizedProfile.name.toLowerCase()
+          (p) =>
+            p.name.trim().toLowerCase() ===
+            normalizedProfile.name.toLowerCase(),
         );
         if (duplicateName) {
           const errorMessage = `Profile with name "${normalizedProfile.name}" already exists with id: ${duplicateName.id}`;
@@ -111,10 +115,15 @@ export const PlayerStorage = {
       } else {
         // For updates, check if name change would create a duplicate
         const existingProfile = profiles[existingIndex];
-        if (existingProfile.name.trim().toLowerCase() !== normalizedProfile.name.toLowerCase()) {
+        if (
+          existingProfile.name.trim().toLowerCase() !==
+          normalizedProfile.name.toLowerCase()
+        ) {
           const duplicateName = profiles.find(
-            (p, idx) => idx !== existingIndex && 
-            p.name.trim().toLowerCase() === normalizedProfile.name.toLowerCase()
+            (p, idx) =>
+              idx !== existingIndex &&
+              p.name.trim().toLowerCase() ===
+                normalizedProfile.name.toLowerCase(),
           );
           if (duplicateName) {
             const errorMessage = `Cannot update profile: name "${normalizedProfile.name}" already exists with id: ${duplicateName.id}`;
@@ -131,16 +140,23 @@ export const PlayerStorage = {
       // Update or add profile
       if (isUpdate) {
         profiles[existingIndex] = normalizedProfile;
-        Logger.info("STORAGE", `Updated player profile: ${normalizedProfile.name} (${normalizedProfile.id})`);
+        Logger.info(
+          "STORAGE",
+          `Updated player profile: ${normalizedProfile.name} (${normalizedProfile.id})`,
+        );
       } else {
         profiles.push(normalizedProfile);
-        Logger.info("STORAGE", `Created player profile: ${normalizedProfile.name} (${normalizedProfile.id})`);
+        Logger.info(
+          "STORAGE",
+          `Created player profile: ${normalizedProfile.name} (${normalizedProfile.id})`,
+        );
       }
 
       // Validate that profiles array is still valid before saving
       try {
         const testSerialization = JSON.stringify(profiles);
-        if (testSerialization.length > 10 * 1024 * 1024) { // 10MB limit
+        if (testSerialization.length > 10 * 1024 * 1024) {
+          // 10MB limit
           throw new Error("Profile data exceeds 10MB limit");
         }
       } catch (serializationError: any) {
@@ -148,7 +164,9 @@ export const PlayerStorage = {
           error: serializationError?.message || String(serializationError),
           profileCount: profiles.length,
         });
-        throw new Error(`Failed to validate profile data: ${serializationError?.message || String(serializationError)}`);
+        throw new Error(
+          `Failed to validate profile data: ${serializationError?.message || String(serializationError)}`,
+        );
       }
 
       // Save to storage
@@ -156,30 +174,44 @@ export const PlayerStorage = {
 
       // Verify the save was successful by reading back
       const verifyProfiles = await PlayerStorage.getAll();
-      const savedProfile = verifyProfiles.find(p => p.id === normalizedProfile.id);
+      const savedProfile = verifyProfiles.find(
+        (p) => p.id === normalizedProfile.id,
+      );
       if (!savedProfile) {
-        throw new Error("Profile was not saved correctly - verification failed");
+        throw new Error(
+          "Profile was not saved correctly - verification failed",
+        );
       }
 
       return normalizedProfile;
     } catch (e: any) {
       // Don't re-log if it's already our validation error
-      if (!e.message?.includes("validation failed") && 
-          !e.message?.includes("already exists") &&
-          !e.message?.includes("Failed to validate")) {
-        Logger.error("STORAGE", `Failed to save player profile: ${profile?.name || 'unknown'}`, {
-          error: e?.message || String(e),
-          profileId: profile?.id,
-          profileName: profile?.name,
-        });
+      if (
+        !e.message?.includes("validation failed") &&
+        !e.message?.includes("already exists") &&
+        !e.message?.includes("Failed to validate")
+      ) {
+        Logger.error(
+          "STORAGE",
+          `Failed to save player profile: ${profile?.name || "unknown"}`,
+          {
+            error: e?.message || String(e),
+            profileId: profile?.id,
+            profileName: profile?.name,
+          },
+        );
       }
       // Re-throw validation errors as-is, wrap others
-      if (e.message?.includes("validation failed") || 
-          e.message?.includes("already exists") ||
-          e.message?.includes("Failed to validate")) {
+      if (
+        e.message?.includes("validation failed") ||
+        e.message?.includes("already exists") ||
+        e.message?.includes("Failed to validate")
+      ) {
         throw e;
       }
-      throw new Error(`Failed to save player profile: ${e?.message || String(e)}`);
+      throw new Error(
+        `Failed to save player profile: ${e?.message || String(e)}`,
+      );
     }
   },
 
@@ -197,7 +229,10 @@ export const PlayerStorage = {
       // CHECK MEMORY FIRST
       const existing = await PlayerStorage.findByName(cleanName);
       if (existing) {
-        Logger.info("STORAGE", `Found existing profile for "${cleanName}": ${existing.id}`);
+        Logger.info(
+          "STORAGE",
+          `Found existing profile for "${cleanName}": ${existing.id}`,
+        );
         return existing;
       }
 
@@ -208,22 +243,33 @@ export const PlayerStorage = {
         avatar: DEFAULT_AVATAR,
       };
       await PlayerStorage.save(newProfile);
-      Logger.info("STORAGE", `Created new profile for "${cleanName}": ${newProfile.id}`);
+      Logger.info(
+        "STORAGE",
+        `Created new profile for "${cleanName}": ${newProfile.id}`,
+      );
       return newProfile;
     } catch (e: any) {
       // Re-throw if it's our validation error, otherwise wrap it
-      if (e.message === "Name cannot be empty" || e.message?.includes("Failed to save")) {
+      if (
+        e.message === "Name cannot be empty" ||
+        e.message?.includes("Failed to save")
+      ) {
         throw e;
       }
       Logger.error("STORAGE", `Failed to get or create profile for "${name}"`, {
         error: e?.message || String(e),
       });
-      throw new Error(`Failed to get or create profile: ${e?.message || String(e)}`);
+      throw new Error(
+        `Failed to get or create profile: ${e?.message || String(e)}`,
+      );
     }
   },
 
   // Search profiles by name prefix (for autocomplete)
-  searchByPrefix: async (prefix: string, limit: number = 5): Promise<UserProfile[]> => {
+  searchByPrefix: async (
+    prefix: string,
+    limit: number = 5,
+  ): Promise<UserProfile[]> => {
     if (!prefix.trim()) return [];
 
     try {
@@ -231,12 +277,16 @@ export const PlayerStorage = {
       const searchTerm = prefix.trim().toLowerCase();
 
       return all
-        .filter(p => p.name.toLowerCase().includes(searchTerm))
+        .filter((p) => p.name.toLowerCase().startsWith(searchTerm))
         .slice(0, limit);
     } catch (e: any) {
-      Logger.error("STORAGE", `Failed to search profiles by prefix "${prefix}"`, {
-        error: e?.message || String(e),
-      });
+      Logger.error(
+        "STORAGE",
+        `Failed to search profiles by prefix "${prefix}"`,
+        {
+          error: e?.message || String(e),
+        },
+      );
       return [];
     }
   },
@@ -254,6 +304,6 @@ export const PlayerStorage = {
       });
       throw new Error(`Failed to clear profiles: ${e?.message || String(e)}`);
     }
-  }
+  },
 };
 // --- END OF FILE: services\player_storage.ts ---
