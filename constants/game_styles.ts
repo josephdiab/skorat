@@ -155,6 +155,18 @@ export const GameStyles = StyleSheet.create({
     padding: Spacing.m,
     borderRadius: Radius.sm,
   },
+  modalResetBtn: {
+    position: "absolute",
+    top: Spacing.m,
+    right: Spacing.m,
+    width: 48,
+    height: 48,
+    borderRadius: Radius.round,
+    backgroundColor: Colors.surfaceLight,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
+  },
 
   // --- Tarneeb/400 Specific ---
   grid: {
