@@ -3,7 +3,6 @@ import React, { useMemo, useState } from "react";
 import {
   LayoutAnimation,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -122,8 +121,7 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
         {isExpanded && (
           <View>
             <View style={styles.divider} />
-            <View style={{ maxHeight: 200 }}>
-              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            <View>
                 {history.map((h, index) => (
                   <TouchableOpacity
                     key={index}
@@ -158,7 +156,6 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
                 {history.length === 0 && (
                   <Text style={styles.emptyText}>No rounds recorded</Text>
                 )}
-              </ScrollView>
             </View>
             <View style={styles.divider} />
           </View>
