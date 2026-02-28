@@ -1,15 +1,15 @@
 import { Stack, useRouter } from "expo-router";
-import { Check, Crown, RotateCcw, X } from "lucide-react-native";
+import ConfettiCannon from "react-native-confetti-cannon";
+import { Check, Crown, RotateCcw, Trophy, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Local imports
 import { GameHeader } from "../../components/game_header";
-import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { GameStyles } from "../../constants/game_styles";
-import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
+import { Colors, FontSize, FontWeight, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameRoundDetails, Player, RoundHistory } from "../../constants/types";
 import { useGameCore } from "../../hooks/useGameCore";
 import { Logger } from "../../services/logger";
@@ -49,7 +49,10 @@ export default function TarneebScreen() {
   } | null>(null);
 
   useEffect(() => {
-    if (status === "completed") setPhase("gameover");
+    if (status === "completed") {
+      setPhase("gameover");
+      setIsExpanded(true);
+    }
   }, [status]);
 
   // Helper for Team Names
@@ -360,17 +363,17 @@ export default function TarneebScreen() {
         onBack={() => router.dismissAll()}
       />
 
-      <ScoreboardHistory
-        players={scoreboardPlayers}
-        history={scoreboardHistory}
-        isExpanded={isExpanded}
-        toggleExpand={() => setIsExpanded(!isExpanded)}
-        onEditRound={startEditingRound}
-        isTeamScoreboard={true}
-      />
-
       {phase !== "gameover" ? (
         <>
+          <ScoreboardHistory
+            players={scoreboardPlayers}
+            history={scoreboardHistory}
+            isExpanded={isExpanded}
+            toggleExpand={() => setIsExpanded(!isExpanded)}
+            onEditRound={startEditingRound}
+            isTeamScoreboard={true}
+          />
+
           <View style={GameStyles.statusRowFixed}>
             {phase === "bidding" ? (
               <>
@@ -462,7 +465,68 @@ export default function TarneebScreen() {
           </View>
         </>
       ) : (
-        <GameOverScreen winners={winnerText} onRematch={handleRematch} />
+        <>
+          <View style={{ flex: 1 }}>
+            <ScoreboardHistory
+              players={scoreboardPlayers}
+              history={scoreboardHistory}
+              isExpanded={isExpanded}
+              toggleExpand={() => setIsExpanded(!isExpanded)}
+              onEditRound={startEditingRound}
+              isTeamScoreboard={true}
+            />
+          </View>
+          <View
+            style={{
+              paddingVertical: Spacing.l,
+              paddingHorizontal: Spacing.l,
+              borderTopWidth: 1,
+              borderTopColor: Colors.border,
+              gap: Spacing.m,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: Spacing.s,
+              }}
+            >
+              <Trophy size={20} color={Colors.gold} fill={Colors.gold} />
+              <Text
+                style={{
+                  color: Colors.text,
+                  fontSize: FontSize.xl,
+                  fontWeight: FontWeight.bold,
+                  textAlign: "center",
+                }}
+              >
+                {winnerText}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleRematch}
+              style={[
+                GlobalStyles.primaryButton,
+                { flexDirection: "row", gap: Spacing.s },
+              ]}
+            >
+              <RotateCcw size={18} color={Colors.white} />
+              <Text style={GlobalStyles.primaryButtonText}>START REMATCH</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {phase === "gameover" && (
+        <ConfettiCannon
+          count={200}
+          origin={{ x: -20, y: 0 }}
+          autoStart={true}
+          fadeOut={true}
+          fallSpeed={3000}
+        />
       )}
 
       {/* Edit Modal */}

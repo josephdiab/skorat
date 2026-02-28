@@ -1,16 +1,16 @@
 import { useKeepAwake } from "expo-keep-awake";
 import { Stack, useRouter } from "expo-router";
-import { Heart, RotateCcw } from "lucide-react-native";
+import ConfettiCannon from "react-native-confetti-cannon";
+import { Heart, RotateCcw, Trophy } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Local Imports
 import { GameHeader } from "../../components/game_header";
-import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { GameStyles } from "../../constants/game_styles";
-import { Colors, GlobalStyles } from "../../constants/theme";
+import { Colors, FontSize, FontWeight, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameRoundDetails, Player } from "../../constants/types"; // Import Types
 import { useGameCore } from "../../hooks/useGameCore";
 import { Logger } from "../../services/logger";
@@ -43,6 +43,10 @@ export default function LeekhaScreen() {
     qsHolder: string | null;
     tenHolder: string | null;
   } | null>(null);
+
+  useEffect(() => {
+    if (gameState?.status === "completed") setIsExpanded(true);
+  }, [gameState?.status]);
 
   // Initialize Round Inputs
   useEffect(() => {
@@ -381,40 +385,40 @@ export default function LeekhaScreen() {
         onBack={() => router.dismissAll()}
       />
 
-      <ScoreboardHistory
-        players={players}
-        history={history}
-        isExpanded={isExpanded}
-        toggleExpand={() => setIsExpanded(!isExpanded)}
-        renderScoreExtra={renderLastRoundIcons}
-        isTeamScoreboard={false}
-        onEditRound={(idx) => {
-          const r = history[idx];
-          const h: any = {};
-          let qs = null;
-          let ten = null;
-
-          // Reading needs to happen via Profile ID
-          players.forEach((p) => {
-            const details = r.playerDetails[p.profileId];
-            if (details && details.kind === "leekha") {
-              h[p.id] = details.heartsTaken;
-              if (details.hasQS) qs = p.id;
-              if (details.hasTen) ten = p.id;
-            }
-          });
-
-          setEditingRound({
-            index: idx,
-            hearts: h,
-            qsHolder: qs,
-            tenHolder: ten,
-          });
-        }}
-      />
-
       {status !== "completed" ? (
         <>
+          <ScoreboardHistory
+            players={players}
+            history={history}
+            isExpanded={isExpanded}
+            toggleExpand={() => setIsExpanded(!isExpanded)}
+            renderScoreExtra={renderLastRoundIcons}
+            isTeamScoreboard={false}
+            onEditRound={(idx) => {
+              const r = history[idx];
+              const h: any = {};
+              let qs = null;
+              let ten = null;
+
+              // Reading needs to happen via Profile ID
+              players.forEach((p) => {
+                const details = r.playerDetails[p.profileId];
+                if (details && details.kind === "leekha") {
+                  h[p.id] = details.heartsTaken;
+                  if (details.hasQS) qs = p.id;
+                  if (details.hasTen) ten = p.id;
+                }
+              });
+
+              setEditingRound({
+                index: idx,
+                hearts: h,
+                qsHolder: qs,
+                tenHolder: ten,
+              });
+            }}
+          />
+
           <View style={GameStyles.statusRowFixed}>
             <Text style={GameStyles.sectionTitle}>Round {roundNum}</Text>
             <StatusBadges
@@ -467,7 +471,90 @@ export default function LeekhaScreen() {
           </View>
         </>
       ) : (
-        <GameOverScreen winners={winnersNames} onRematch={handleRematch} />
+        <>
+          <View style={{ flex: 1 }}>
+            <ScoreboardHistory
+              players={players}
+              history={history}
+              isExpanded={isExpanded}
+              toggleExpand={() => setIsExpanded(!isExpanded)}
+              renderScoreExtra={renderLastRoundIcons}
+              isTeamScoreboard={false}
+              onEditRound={(idx) => {
+                const r = history[idx];
+                const h: any = {};
+                let qs = null;
+                let ten = null;
+
+                players.forEach((p) => {
+                  const details = r.playerDetails[p.profileId];
+                  if (details && details.kind === "leekha") {
+                    h[p.id] = details.heartsTaken;
+                    if (details.hasQS) qs = p.id;
+                    if (details.hasTen) ten = p.id;
+                  }
+                });
+
+                setEditingRound({
+                  index: idx,
+                  hearts: h,
+                  qsHolder: qs,
+                  tenHolder: ten,
+                });
+              }}
+            />
+          </View>
+          <View
+            style={{
+              paddingVertical: Spacing.l,
+              paddingHorizontal: Spacing.l,
+              borderTopWidth: 1,
+              borderTopColor: Colors.border,
+              gap: Spacing.m,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: Spacing.s,
+              }}
+            >
+              <Trophy size={20} color={Colors.gold} fill={Colors.gold} />
+              <Text
+                style={{
+                  color: Colors.text,
+                  fontSize: FontSize.xl,
+                  fontWeight: FontWeight.bold,
+                  textAlign: "center",
+                }}
+              >
+                {winnersNames}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleRematch}
+              style={[
+                GlobalStyles.primaryButton,
+                { flexDirection: "row", gap: Spacing.s },
+              ]}
+            >
+              <RotateCcw size={18} color={Colors.white} />
+              <Text style={GlobalStyles.primaryButtonText}>START REMATCH</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {status === "completed" && (
+        <ConfettiCannon
+          count={200}
+          origin={{ x: -20, y: 0 }}
+          autoStart={true}
+          fadeOut={true}
+          fallSpeed={3000}
+        />
       )}
 
       {/* --- Edit Modal --- */}

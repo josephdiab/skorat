@@ -1,16 +1,16 @@
 import { useKeepAwake } from "expo-keep-awake";
 import { Stack, useRouter } from "expo-router";
-import { RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react-native";
+import ConfettiCannon from "react-native-confetti-cannon";
+import { RotateCcw, ThumbsDown, ThumbsUp, Trophy } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Local Imports
 import { GameHeader } from "../../components/game_header";
-import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { GameStyles } from "../../constants/game_styles";
-import { Colors, GlobalStyles } from "../../constants/theme";
+import { Colors, FontSize, FontWeight, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameRoundDetails, Player, RoundHistory } from "../../constants/types";
 import { useGameCore } from "../../hooks/useGameCore";
 import { Logger } from "../../services/logger";
@@ -101,7 +101,10 @@ export default function FourHundredScreen() {
   } | null>(null);
 
   useEffect(() => {
-    if (gameState?.status === "completed") setPhase("gameover");
+    if (gameState?.status === "completed") {
+      setPhase("gameover");
+      setIsExpanded(true);
+    }
   }, [gameState?.status]);
 
   // Initialize bids
@@ -391,17 +394,17 @@ export default function FourHundredScreen() {
         }
         onBack={() => router.dismissAll()}
       />
-      <ScoreboardHistory
-        players={players}
-        history={history}
-        isExpanded={isExpanded}
-        toggleExpand={() => setIsExpanded(!isExpanded)}
-        onEditRound={startEditingRound}
-        isTeamScoreboard={false}
-      />
-
       {phase !== "gameover" ? (
         <>
+          <ScoreboardHistory
+            players={players}
+            history={history}
+            isExpanded={isExpanded}
+            toggleExpand={() => setIsExpanded(!isExpanded)}
+            onEditRound={startEditingRound}
+            isTeamScoreboard={false}
+          />
+
           <View style={GameStyles.statusRowFixed}>
             {phase === "bidding" ? (
               <>
@@ -497,7 +500,68 @@ export default function FourHundredScreen() {
           </View>
         </>
       ) : (
-        <GameOverScreen winners={winnerText} onRematch={handleRematch} />
+        <>
+          <View style={{ flex: 1 }}>
+            <ScoreboardHistory
+              players={players}
+              history={history}
+              isExpanded={isExpanded}
+              toggleExpand={() => setIsExpanded(!isExpanded)}
+              onEditRound={startEditingRound}
+              isTeamScoreboard={false}
+            />
+          </View>
+          <View
+            style={{
+              paddingVertical: Spacing.l,
+              paddingHorizontal: Spacing.l,
+              borderTopWidth: 1,
+              borderTopColor: Colors.border,
+              gap: Spacing.m,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: Spacing.s,
+              }}
+            >
+              <Trophy size={20} color={Colors.gold} fill={Colors.gold} />
+              <Text
+                style={{
+                  color: Colors.text,
+                  fontSize: FontSize.xl,
+                  fontWeight: FontWeight.bold,
+                  textAlign: "center",
+                }}
+              >
+                {winnerText}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleRematch}
+              style={[
+                GlobalStyles.primaryButton,
+                { flexDirection: "row", gap: Spacing.s },
+              ]}
+            >
+              <RotateCcw size={18} color={Colors.white} />
+              <Text style={GlobalStyles.primaryButtonText}>START REMATCH</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {phase === "gameover" && (
+        <ConfettiCannon
+          count={200}
+          origin={{ x: -20, y: 0 }}
+          autoStart={true}
+          fadeOut={true}
+          fallSpeed={3000}
+        />
       )}
 
       {/* Edit Modal */}
