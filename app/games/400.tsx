@@ -93,6 +93,7 @@ export default function FourHundredScreen() {
   const [bids, setBids] = useState<Record<string, number>>({});
   const [results, setResults] = useState<Record<string, boolean>>({});
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const [editingRound, setEditingRound] = useState<{
     index: number;
@@ -104,6 +105,7 @@ export default function FourHundredScreen() {
     if (gameState?.status === "completed") {
       setPhase("gameover");
       setIsExpanded(true);
+      setShowConfetti(true);
     }
   }, [gameState?.status]);
 
@@ -566,13 +568,14 @@ export default function FourHundredScreen() {
         </>
       )}
 
-      {phase === "gameover" && (
+      {showConfetti && (
         <ConfettiCannon
           count={200}
           origin={{ x: -20, y: 0 }}
           autoStart={true}
           fadeOut={true}
           fallSpeed={3000}
+          onAnimationEnd={() => setShowConfetti(false)}
         />
       )}
 

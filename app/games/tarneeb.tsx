@@ -40,6 +40,7 @@ export default function TarneebScreen() {
   const [bidAmount, setBidAmount] = useState<number>(7);
   const [tricksTaken, setTricksTaken] = useState<number>(7);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const [editingRound, setEditingRound] = useState<{
     index: number;
@@ -52,6 +53,7 @@ export default function TarneebScreen() {
     if (status === "completed") {
       setPhase("gameover");
       setIsExpanded(true);
+      setShowConfetti(true);
     }
   }, [status]);
 
@@ -81,7 +83,7 @@ export default function TarneebScreen() {
         totalScore: players[0].totalScore,
         isDanger: players[0].isDanger,
         profileId: "A",
-        isWinner: false,
+        isWinner: players[0].isWinner,
       },
       {
         id: "B",
@@ -89,7 +91,7 @@ export default function TarneebScreen() {
         totalScore: players[2].totalScore,
         isDanger: players[2].isDanger,
         profileId: "B",
-        isWinner: false,
+        isWinner: players[2].isWinner,
       },
     ];
   }, [players, teamAName, teamBName]);
@@ -531,13 +533,14 @@ export default function TarneebScreen() {
         </>
       )}
 
-      {phase === "gameover" && (
+      {showConfetti && (
         <ConfettiCannon
           count={200}
           origin={{ x: -20, y: 0 }}
           autoStart={true}
           fadeOut={true}
           fallSpeed={3000}
+          onAnimationEnd={() => setShowConfetti(false)}
         />
       )}
 

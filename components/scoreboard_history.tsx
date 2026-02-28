@@ -49,7 +49,19 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
     if (isExpanded) setIsEditing(false);
   };
 
+  const isGameOver = players.some((p) => p.isWinner);
+
+  const getColumnStyle = (p: Player) => {
+    if (!isGameOver) return {};
+    if (p.isWinner) return { color: Colors.primary };
+    return { color: Colors.textMuted, opacity: 0.5 };
+  };
+
   const getScoreStyle = (p: Player) => {
+    if (isGameOver) {
+      if (p.isWinner) return { color: Colors.primary };
+      return { color: Colors.textMuted, opacity: 0.5 };
+    }
     if (p.isDanger) return { color: Colors.danger };
     if (p.totalScore < 0) return { color: Colors.danger };
     return { color: Colors.text };
@@ -110,7 +122,7 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
         {/* Player Names Header (Ordered) */}
         <View style={styles.scoreGrid}>
           {orderedPlayers.map((p) => (
-            <Text key={p.id} style={styles.columnHeader} numberOfLines={1}>
+            <Text key={p.id} style={[styles.columnHeader, getColumnStyle(p)]} numberOfLines={1}>
               {p.name}
             </Text>
           ))}
@@ -145,7 +157,7 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
                     {orderedPlayers.map((p) => {
                       const val = getRoundCellScore(h, p);
                       return (
-                        <Text key={p.id} style={styles.historyCell}>
+                        <Text key={p.id} style={[styles.historyCell, getColumnStyle(p)]}>
                           {val}
                         </Text>
                       );

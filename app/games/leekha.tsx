@@ -31,6 +31,7 @@ export default function LeekhaScreen() {
 
   // --- Local UI State ---
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   // Round Input State
   const [hearts, setHearts] = useState<Record<string, number>>({});
@@ -45,7 +46,10 @@ export default function LeekhaScreen() {
   } | null>(null);
 
   useEffect(() => {
-    if (gameState?.status === "completed") setIsExpanded(true);
+    if (gameState?.status === "completed") {
+      setIsExpanded(true);
+      setShowConfetti(true);
+    }
   }, [gameState?.status]);
 
   // Initialize Round Inputs
@@ -559,13 +563,14 @@ export default function LeekhaScreen() {
         </>
       )}
 
-      {status === "completed" && (
+      {showConfetti && (
         <ConfettiCannon
           count={200}
           origin={{ x: -20, y: 0 }}
           autoStart={true}
           fadeOut={true}
           fallSpeed={3000}
+          onAnimationEnd={() => setShowConfetti(false)}
         />
       )}
 
