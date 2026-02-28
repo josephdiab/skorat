@@ -480,6 +480,7 @@ export default function LeekhaScreen() {
               toggleExpand={() => setIsExpanded(!isExpanded)}
               renderScoreExtra={renderLastRoundIcons}
               isTeamScoreboard={false}
+              flex={true}
               onEditRound={(idx) => {
                 const r = history[idx];
                 const h: any = {};
@@ -513,6 +514,17 @@ export default function LeekhaScreen() {
               gap: Spacing.m,
             }}
           >
+            <Text
+              style={{
+                color: Colors.textSecondary,
+                fontSize: FontSize.sm,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+                textAlign: "center",
+              }}
+            >
+              CONGRATULATIONS
+            </Text>
             <View
               style={{
                 flexDirection: "row",

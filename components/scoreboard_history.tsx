@@ -28,6 +28,7 @@ type ScoreboardHistoryProps = {
   renderScoreExtra?: (player: Player) => React.ReactNode;
   onEditRound?: (roundIndex: number) => void;
   isTeamScoreboard?: boolean;
+  flex?: boolean;
 };
 
 export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
@@ -38,6 +39,7 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
   renderScoreExtra,
   onEditRound,
   isTeamScoreboard = false,
+  flex = false,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
 
@@ -82,12 +84,8 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
   };
 
   return (
-    <View style={styles.scoreboardContainer}>
-      <TouchableOpacity
-        style={styles.scoreboardHeader}
-        activeOpacity={0.95}
-        onPress={handleToggle}
-      >
+    <View style={[styles.scoreboardContainer, flex && { flexShrink: 1, minHeight: 0 }]}>
+      <View style={[styles.scoreboardHeader, flex && isExpanded && { flexShrink: 1, minHeight: 0 }]}>
         {/* Header with Edit Button */}
         {isExpanded && (
           <View style={[GlobalStyles.rowBetween, { marginBottom: Spacing.m }]}>
@@ -120,9 +118,9 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
 
         {/* History Rows (Collapsible) */}
         {isExpanded && (
-          <View>
+          <View style={[flex && { flexShrink: 1, minHeight: 0 }]}>
             <View style={styles.divider} />
-            <ScrollView>
+            <ScrollView style={[flex && { flexShrink: 1, minHeight: 0 }]}>
                 {history.map((h, index) => (
                   <TouchableOpacity
                     key={index}
@@ -172,14 +170,18 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
           ))}
         </View>
 
-        <View style={{ alignItems: "center", marginTop: Spacing.s, opacity: 0.6 }}>
+        <TouchableOpacity
+          onPress={handleToggle}
+          activeOpacity={0.6}
+          style={{ alignItems: "center", marginTop: Spacing.s, opacity: 0.6 }}
+        >
           {isExpanded ? (
             <ChevronUp size={20} color={Colors.textSecondary} />
           ) : (
             <ChevronDown size={20} color={Colors.textSecondary} />
           )}
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };

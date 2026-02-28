@@ -509,6 +509,7 @@ export default function FourHundredScreen() {
               toggleExpand={() => setIsExpanded(!isExpanded)}
               onEditRound={startEditingRound}
               isTeamScoreboard={false}
+              flex={true}
             />
           </View>
           <View
@@ -520,6 +521,17 @@ export default function FourHundredScreen() {
               gap: Spacing.m,
             }}
           >
+            <Text
+              style={{
+                color: Colors.textSecondary,
+                fontSize: FontSize.sm,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+                textAlign: "center",
+              }}
+            >
+              CONGRATULATIONS
+            </Text>
             <View
               style={{
                 flexDirection: "row",
