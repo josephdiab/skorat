@@ -439,7 +439,7 @@ export default function FourHundredScreen() {
             )}
           </View>
 
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minHeight: 160 }}>
             <ScrollView contentContainerStyle={GameStyles.scrollContent}>
               {phase === "bidding" ? (
                 <View style={GameStyles.biddingGrid}>

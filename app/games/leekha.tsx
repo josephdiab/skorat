@@ -432,7 +432,7 @@ export default function LeekhaScreen() {
             />
           </View>
 
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minHeight: 160 }}>
             <ScrollView contentContainerStyle={GameStyles.scrollContent}>
               {orderedPlayersForUI.map((p) => (
                 <LeekhaPlayerCard

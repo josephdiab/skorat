@@ -409,7 +409,7 @@ export default function TarneebScreen() {
             )}
           </View>
 
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minHeight: 160 }}>
             <ScrollView contentContainerStyle={GameStyles.scrollContent}>
               {phase === "bidding" ? (
                 <BiddingPhase

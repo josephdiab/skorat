@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Edit2 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutAnimation,
   Platform,
@@ -10,8 +10,17 @@ import {
   UIManager,
   View,
 } from "react-native";
-import { Colors, FontSize, FontWeight, GlobalStyles, Radius, Shadows, Spacing } from "../constants/theme";
+import {
+  Colors,
+  FontSize,
+  FontWeight,
+  GlobalStyles,
+  Radius,
+  Shadows,
+  Spacing,
+} from "../constants/theme";
 import { Player, RoundHistory } from "../constants/types";
+
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === "android") {
@@ -42,6 +51,13 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
   flex = false,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (isExpanded && history.length > 0) {
+      scrollViewRef.current?.scrollToEnd({ animated: false });
+    }
+  }, [isExpanded, history.length]);
 
   const handleToggle = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -96,22 +112,40 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
   };
 
   return (
-    <View style={[styles.scoreboardContainer, flex && { flexShrink: 1, minHeight: 0 }]}>
-      <View style={[styles.scoreboardHeader, flex && isExpanded && { flexShrink: 1, minHeight: 0 }]}>
+    <View
+      style={[
+        styles.scoreboardContainer,
+        flex && { flexShrink: 1, minHeight: 0 },
+      ]}
+    >
+      <View
+        style={[
+          styles.scoreboardHeader,
+          isExpanded && { flexShrink: 1, minHeight: 0 },
+        ]}
+      >
         {/* Header with Edit Button */}
         {isExpanded && (
           <View style={[GlobalStyles.rowBetween, { marginBottom: Spacing.m }]}>
             <Text style={GlobalStyles.textSmall}>MATCH HISTORY</Text>
             {history.length > 0 && (
               <TouchableOpacity
-                style={[styles.editButton, isEditing && styles.editButtonActive]}
+                style={[
+                  styles.editButton,
+                  isEditing && styles.editButtonActive,
+                ]}
                 onPress={() => setIsEditing(!isEditing)}
               >
                 <Edit2
                   size={12}
                   color={isEditing ? Colors.primary : Colors.textSecondary}
                 />
-                <Text style={[styles.editText, isEditing && { color: Colors.primary }]}>
+                <Text
+                  style={[
+                    styles.editText,
+                    isEditing && { color: Colors.primary },
+                  ]}
+                >
                   {isEditing ? "DONE" : "EDIT"}
                 </Text>
               </TouchableOpacity>
@@ -122,7 +156,11 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
         {/* Player Names Header (Ordered) */}
         <View style={styles.scoreGrid}>
           {orderedPlayers.map((p) => (
-            <Text key={p.id} style={[styles.columnHeader, getColumnStyle(p)]} numberOfLines={1}>
+            <Text
+              key={p.id}
+              style={[styles.columnHeader, getColumnStyle(p)]}
+              numberOfLines={1}
+            >
               {p.name}
             </Text>
           ))}
@@ -130,53 +168,66 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
 
         {/* History Rows (Collapsible) */}
         {isExpanded && (
-          <View style={[flex && { flexShrink: 1, minHeight: 0 }]}>
+          <View style={[{ flexShrink: 1, minHeight: 0 }]}>
             <View style={styles.divider} />
-            <ScrollView style={[flex && { flexShrink: 1, minHeight: 0 }]}>
-                {history.map((h, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.scoreGrid,
-                      { marginBottom: Spacing.s, paddingVertical: 4 },
-                      isEditing && styles.historyRowEditing,
-                    ]}
-                    disabled={!isEditing}
-                    onPress={() => onEditRound?.(index)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.roundNumContainer}>
-                      {isEditing ? (
-                        <Edit2 size={10} color={Colors.primary} />
-                      ) : (
-                        <Text style={styles.roundNum}>{index + 1}</Text>
-                      )}
-                    </View>
+            <ScrollView
+              ref={scrollViewRef}
+              style={{ flexShrink: 1, minHeight: 0 }}
+            >
+              {history.map((h, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.scoreGrid,
+                    { marginBottom: Spacing.s, paddingVertical: 4 },
+                    isEditing && styles.historyRowEditing,
+                  ]}
+                  disabled={!isEditing}
+                  onPress={() => onEditRound?.(index)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.roundNumContainer}>
+                    {isEditing ? (
+                      <Edit2 size={10} color={Colors.primary} />
+                    ) : (
+                      <Text style={styles.roundNum}>{index + 1}</Text>
+                    )}
+                  </View>
 
-                    {/* Render cells in the same order as headers */}
-                    {orderedPlayers.map((p) => {
-                      const val = getRoundCellScore(h, p);
-                      return (
-                        <Text key={p.id} style={[styles.historyCell, getColumnStyle(p)]}>
-                          {val}
-                        </Text>
-                      );
-                    })}
-                  </TouchableOpacity>
-                ))}
-                {history.length === 0 && (
-                  <Text style={styles.emptyText}>No rounds recorded</Text>
-                )}
+                  {/* Render cells in the same order as headers */}
+                  {orderedPlayers.map((p) => {
+                    const val = getRoundCellScore(h, p);
+                    return (
+                      <Text
+                        key={p.id}
+                        style={[styles.historyCell, getColumnStyle(p)]}
+                      >
+                        {val}
+                      </Text>
+                    );
+                  })}
+                </TouchableOpacity>
+              ))}
+              {history.length === 0 && (
+                <Text style={styles.emptyText}>No rounds recorded</Text>
+              )}
             </ScrollView>
             <View style={styles.divider} />
           </View>
         )}
 
         {/* TOTAL SCORES (Ordered) */}
-        <View style={[styles.scoreGrid, { marginTop: isExpanded ? Spacing.s : Spacing.xs }]}>
+        <View
+          style={[
+            styles.scoreGrid,
+            { marginTop: isExpanded ? Spacing.s : Spacing.xs },
+          ]}
+        >
           {orderedPlayers.map((p) => (
             <View key={p.id} style={styles.scoreCol}>
-              <Text style={[styles.totalScore, getScoreStyle(p)]}>{p.totalScore}</Text>
+              <Text style={[styles.totalScore, getScoreStyle(p)]}>
+                {p.totalScore}
+              </Text>
               {renderScoreExtra && renderScoreExtra(p)}
             </View>
           ))}
@@ -204,6 +255,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.s,
     marginBottom: Spacing.xs,
     zIndex: 10,
+    flexShrink: 1,
   },
   scoreboardHeader: {
     backgroundColor: Colors.surface,
@@ -257,7 +309,11 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.bold,
     marginLeft: Spacing.xs,
   },
-  divider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.m },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: Spacing.m,
+  },
   roundNumContainer: {
     position: "absolute",
     left: 0,
