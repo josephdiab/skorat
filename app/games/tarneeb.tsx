@@ -1,15 +1,15 @@
 import { Stack, useRouter } from "expo-router";
-import { Check, Crown, RotateCcw, X } from "lucide-react-native";
+import ConfettiCannon from "react-native-confetti-cannon";
+import { Check, Crown, RotateCcw, Trophy, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Local imports
 import { GameHeader } from "../../components/game_header";
-import { GameOverScreen } from "../../components/rematch_button";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { GameStyles } from "../../constants/game_styles";
-import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
+import { Colors, FontSize, FontWeight, GlobalStyles, Spacing } from "../../constants/theme";
 import { GameRoundDetails, Player, RoundHistory } from "../../constants/types";
 import { useGameCore } from "../../hooks/useGameCore";
 import { Logger } from "../../services/logger";
@@ -40,6 +40,7 @@ export default function TarneebScreen() {
   const [bidAmount, setBidAmount] = useState<number>(7);
   const [tricksTaken, setTricksTaken] = useState<number>(7);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const [editingRound, setEditingRound] = useState<{
     index: number;
@@ -49,7 +50,11 @@ export default function TarneebScreen() {
   } | null>(null);
 
   useEffect(() => {
-    if (status === "completed") setPhase("gameover");
+    if (status === "completed") {
+      setPhase("gameover");
+      setIsExpanded(true);
+      setShowConfetti(true);
+    }
   }, [status]);
 
   // Helper for Team Names
@@ -78,7 +83,7 @@ export default function TarneebScreen() {
         totalScore: players[0].totalScore,
         isDanger: players[0].isDanger,
         profileId: "A",
-        isWinner: false,
+        isWinner: players[0].isWinner,
       },
       {
         id: "B",
@@ -86,7 +91,7 @@ export default function TarneebScreen() {
         totalScore: players[2].totalScore,
         isDanger: players[2].isDanger,
         profileId: "B",
-        isWinner: false,
+        isWinner: players[2].isWinner,
       },
     ];
   }, [players, teamAName, teamBName]);
@@ -360,17 +365,17 @@ export default function TarneebScreen() {
         onBack={() => router.dismissAll()}
       />
 
-      <ScoreboardHistory
-        players={scoreboardPlayers}
-        history={scoreboardHistory}
-        isExpanded={isExpanded}
-        toggleExpand={() => setIsExpanded(!isExpanded)}
-        onEditRound={startEditingRound}
-        isTeamScoreboard={true}
-      />
-
       {phase !== "gameover" ? (
         <>
+          <ScoreboardHistory
+            players={scoreboardPlayers}
+            history={scoreboardHistory}
+            isExpanded={isExpanded}
+            toggleExpand={() => setIsExpanded(!isExpanded)}
+            onEditRound={startEditingRound}
+            isTeamScoreboard={true}
+          />
+
           <View style={GameStyles.statusRowFixed}>
             {phase === "bidding" ? (
               <>
@@ -462,7 +467,81 @@ export default function TarneebScreen() {
           </View>
         </>
       ) : (
-        <GameOverScreen winners={winnerText} onRematch={handleRematch} />
+        <>
+          <View style={{ flex: 1 }}>
+            <ScoreboardHistory
+              players={scoreboardPlayers}
+              history={scoreboardHistory}
+              isExpanded={isExpanded}
+              toggleExpand={() => setIsExpanded(!isExpanded)}
+              onEditRound={startEditingRound}
+              isTeamScoreboard={true}
+              flex={true}
+            />
+          </View>
+          <View
+            style={{
+              paddingVertical: Spacing.l,
+              paddingHorizontal: Spacing.l,
+              borderTopWidth: 1,
+              borderTopColor: Colors.border,
+              gap: Spacing.m,
+            }}
+          >
+            <Text
+              style={{
+                color: Colors.textSecondary,
+                fontSize: FontSize.sm,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+                textAlign: "center",
+              }}
+            >
+              CONGRATULATIONS
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: Spacing.s,
+              }}
+            >
+              <Trophy size={20} color={Colors.gold} fill={Colors.gold} />
+              <Text
+                style={{
+                  color: Colors.text,
+                  fontSize: FontSize.xl,
+                  fontWeight: FontWeight.bold,
+                  textAlign: "center",
+                }}
+              >
+                {winnerText}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleRematch}
+              style={[
+                GlobalStyles.primaryButton,
+                { flexDirection: "row", gap: Spacing.s },
+              ]}
+            >
+              <RotateCcw size={18} color={Colors.white} />
+              <Text style={GlobalStyles.primaryButtonText}>START REMATCH</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {showConfetti && (
+        <ConfettiCannon
+          count={200}
+          origin={{ x: -20, y: 0 }}
+          autoStart={true}
+          fadeOut={true}
+          fallSpeed={3000}
+          onAnimationEnd={() => setShowConfetti(false)}
+        />
       )}
 
       {/* Edit Modal */}

@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import {
   LayoutAnimation,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -27,6 +28,7 @@ type ScoreboardHistoryProps = {
   renderScoreExtra?: (player: Player) => React.ReactNode;
   onEditRound?: (roundIndex: number) => void;
   isTeamScoreboard?: boolean;
+  flex?: boolean;
 };
 
 export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
@@ -37,6 +39,7 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
   renderScoreExtra,
   onEditRound,
   isTeamScoreboard = false,
+  flex = false,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
 
@@ -46,7 +49,19 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
     if (isExpanded) setIsEditing(false);
   };
 
+  const isGameOver = players.some((p) => p.isWinner);
+
+  const getColumnStyle = (p: Player) => {
+    if (!isGameOver) return {};
+    if (p.isWinner) return { color: Colors.primary };
+    return { color: Colors.textMuted, opacity: 0.5 };
+  };
+
   const getScoreStyle = (p: Player) => {
+    if (isGameOver) {
+      if (p.isWinner) return { color: Colors.primary };
+      return { color: Colors.textMuted, opacity: 0.5 };
+    }
     if (p.isDanger) return { color: Colors.danger };
     if (p.totalScore < 0) return { color: Colors.danger };
     return { color: Colors.text };
@@ -81,12 +96,8 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
   };
 
   return (
-    <View style={styles.scoreboardContainer}>
-      <TouchableOpacity
-        style={styles.scoreboardHeader}
-        activeOpacity={0.95}
-        onPress={handleToggle}
-      >
+    <View style={[styles.scoreboardContainer, flex && { flexShrink: 1, minHeight: 0 }]}>
+      <View style={[styles.scoreboardHeader, flex && isExpanded && { flexShrink: 1, minHeight: 0 }]}>
         {/* Header with Edit Button */}
         {isExpanded && (
           <View style={[GlobalStyles.rowBetween, { marginBottom: Spacing.m }]}>
@@ -111,7 +122,7 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
         {/* Player Names Header (Ordered) */}
         <View style={styles.scoreGrid}>
           {orderedPlayers.map((p) => (
-            <Text key={p.id} style={styles.columnHeader} numberOfLines={1}>
+            <Text key={p.id} style={[styles.columnHeader, getColumnStyle(p)]} numberOfLines={1}>
               {p.name}
             </Text>
           ))}
@@ -119,9 +130,9 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
 
         {/* History Rows (Collapsible) */}
         {isExpanded && (
-          <View>
+          <View style={[flex && { flexShrink: 1, minHeight: 0 }]}>
             <View style={styles.divider} />
-            <View>
+            <ScrollView style={[flex && { flexShrink: 1, minHeight: 0 }]}>
                 {history.map((h, index) => (
                   <TouchableOpacity
                     key={index}
@@ -146,7 +157,7 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
                     {orderedPlayers.map((p) => {
                       const val = getRoundCellScore(h, p);
                       return (
-                        <Text key={p.id} style={styles.historyCell}>
+                        <Text key={p.id} style={[styles.historyCell, getColumnStyle(p)]}>
                           {val}
                         </Text>
                       );
@@ -156,7 +167,7 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
                 {history.length === 0 && (
                   <Text style={styles.emptyText}>No rounds recorded</Text>
                 )}
-            </View>
+            </ScrollView>
             <View style={styles.divider} />
           </View>
         )}
@@ -171,14 +182,18 @@ export const ScoreboardHistory: React.FC<ScoreboardHistoryProps> = ({
           ))}
         </View>
 
-        <View style={{ alignItems: "center", marginTop: Spacing.s, opacity: 0.6 }}>
+        <TouchableOpacity
+          onPress={handleToggle}
+          activeOpacity={0.6}
+          style={{ alignItems: "center", marginTop: Spacing.s, opacity: 0.6 }}
+        >
           {isExpanded ? (
             <ChevronUp size={20} color={Colors.textSecondary} />
           ) : (
             <ChevronDown size={20} color={Colors.textSecondary} />
           )}
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
