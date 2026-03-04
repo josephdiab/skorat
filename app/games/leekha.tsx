@@ -1,16 +1,23 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useKeepAwake } from "expo-keep-awake";
 import { Stack, useRouter } from "expo-router";
-import ConfettiCannon from "react-native-confetti-cannon";
-import { Heart, RotateCcw, Trophy } from "lucide-react-native";
+import { RotateCcw, Trophy } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import ConfettiCannon from "react-native-confetti-cannon";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Local Imports
 import { GameHeader } from "../../components/game_header";
 import { ScoreboardHistory } from "../../components/scoreboard_history";
 import { GameStyles } from "../../constants/game_styles";
-import { Colors, FontSize, FontWeight, GlobalStyles, Spacing } from "../../constants/theme";
+import {
+  Colors,
+  FontSize,
+  FontWeight,
+  GlobalStyles,
+  Spacing,
+} from "../../constants/theme";
 import { GameRoundDetails, Player } from "../../constants/types"; // Import Types
 import { useGameCore } from "../../hooks/useGameCore";
 import { Logger } from "../../services/logger";
@@ -355,11 +362,33 @@ export default function LeekhaScreen() {
 
     return (
       <View style={GameStyles.lastRoundIcons}>
-        {details.hasQS && <Text style={GameStyles.iconQS}>Q♠</Text>}
-        {details.hasTen && <Text style={GameStyles.iconTen}>10♦</Text>}
+        {details.hasQS && (
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={GameStyles.iconQS}>Q</Text>
+            <MaterialCommunityIcons
+              name="cards-spade"
+              size={10}
+              color={Colors.text}
+            />
+          </View>
+        )}
+        {details.hasTen && (
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={GameStyles.iconTen}>10</Text>
+            <MaterialCommunityIcons
+              name="cards-diamond"
+              size={10}
+              color={Colors.danger}
+            />
+          </View>
+        )}
         {details.heartsTaken > 0 && (
           <View style={GameStyles.iconHeartContainer}>
-            <Heart size={10} color={Colors.danger} fill={Colors.danger} />
+            <MaterialCommunityIcons
+              name="cards-heart"
+              size={10}
+              color={Colors.danger}
+            />
             <Text style={GameStyles.iconHeartText}>{details.heartsTaken}</Text>
           </View>
         )}
@@ -737,15 +766,15 @@ const StatusBadges = ({
         remainingHearts === 0 ? GameStyles.badgeNeutral : GameStyles.badgeError,
       ]}
     >
-      <Heart
+      <MaterialCommunityIcons
+        name="cards-heart"
         size={14}
         color={remainingHearts === 0 ? Colors.textMuted : Colors.danger}
-        fill={remainingHearts === 0 ? "none" : Colors.danger}
       />
       <Text
         style={[
           GameStyles.badgeText,
-          remainingHearts !== 0 && { color: Colors.danger },
+          { color: remainingHearts === 0 ? Colors.textMuted : Colors.danger },
         ]}
       >
         {remainingHearts}
@@ -758,14 +787,21 @@ const StatusBadges = ({
         { marginLeft: 8 },
       ]}
     >
-      <Text
-        style={[
-          GameStyles.badgeText,
-          !qsHolder ? { color: Colors.text } : { color: Colors.textMuted },
-        ]}
-      >
-        Q♠
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Text
+          style={[
+            GameStyles.badgeText,
+            !qsHolder ? { color: Colors.text } : { color: Colors.textMuted },
+          ]}
+        >
+          Q
+        </Text>
+        <MaterialCommunityIcons
+          name="cards-spade"
+          size={14}
+          color={!qsHolder ? Colors.text : Colors.textMuted}
+        />
+      </View>
     </View>
     <View
       style={[
@@ -774,14 +810,21 @@ const StatusBadges = ({
         { marginLeft: 8 },
       ]}
     >
-      <Text
-        style={[
-          GameStyles.badgeText,
-          !tenHolder ? { color: Colors.danger } : { color: Colors.textMuted },
-        ]}
-      >
-        10♦
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Text
+          style={[
+            GameStyles.badgeText,
+            !tenHolder ? { color: Colors.danger } : { color: Colors.textMuted },
+          ]}
+        >
+          10
+        </Text>
+        <MaterialCommunityIcons
+          name="cards-diamond"
+          size={14}
+          color={!tenHolder ? Colors.danger : Colors.textMuted}
+        />
+      </View>
     </View>
   </View>
 );
@@ -803,7 +846,11 @@ const HeartControl = ({
       <Text style={GameStyles.compactBtnText}>-</Text>
     </TouchableOpacity>
     <View style={GameStyles.compactHeartVal}>
-      <Heart size={14} color={Colors.danger} fill={Colors.danger} />
+      <MaterialCommunityIcons
+        name="cards-heart"
+        size={14}
+        color={Colors.danger}
+      />
       <Text style={GameStyles.compactValText}>{value}</Text>
     </View>
     <TouchableOpacity
@@ -833,18 +880,31 @@ const CardToggleButton = ({ type, active, locked, onPress, style }: any) => (
       style,
     ]}
   >
-    <Text
-      style={[
-        GameStyles.compactSpecialText,
-        active
-          ? type === "QS"
-            ? { color: Colors.text }
-            : { color: Colors.danger }
-          : { color: Colors.textMuted },
-      ]}
-    >
-      {type === "QS" ? "Q♠" : "10♦"}
-    </Text>
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <Text
+        style={[
+          GameStyles.compactSpecialText,
+          active
+            ? type === "QS"
+              ? { color: Colors.text }
+              : { color: Colors.danger }
+            : { color: Colors.textMuted },
+        ]}
+      >
+        {type === "QS" ? "Q" : "10"}
+      </Text>
+      <MaterialCommunityIcons
+        name={type === "QS" ? "cards-spade" : "cards-diamond"}
+        size={11}
+        color={
+          active
+            ? type === "QS"
+              ? Colors.text
+              : Colors.danger
+            : Colors.textMuted
+        }
+      />
+    </View>
   </TouchableOpacity>
 );
 
