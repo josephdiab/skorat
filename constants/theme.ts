@@ -91,7 +91,11 @@ export const Radius = {
 // =============================================================================
 type ShadowStyle = Pick<
   ViewStyle,
-  "shadowColor" | "shadowOffset" | "shadowOpacity" | "shadowRadius" | "elevation"
+  | "shadowColor"
+  | "shadowOffset"
+  | "shadowOpacity"
+  | "shadowRadius"
+  | "elevation"
 >;
 
 export const Shadows: {
@@ -157,7 +161,6 @@ export const GlobalStyles = StyleSheet.create({
     paddingVertical: Spacing.m,
   },
   headerTitle: {
-    flex: 1,
     textAlign: "center",
     fontSize: FontSize.xxl,
     fontWeight: FontWeight.extrabold,
