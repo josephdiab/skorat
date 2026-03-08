@@ -5,7 +5,7 @@ import { Colors, GlobalStyles } from "../constants/theme";
 
 type GameHeaderProps = {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   onBack: () => void;
   onMenu?: () => void;
 };
@@ -19,7 +19,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({ title, subtitle, onBack,
       
       <View style={{ flex: 1, alignItems: 'center' }}>
         <Text style={GlobalStyles.headerTitle}>{title}</Text>
-        <Text style={GlobalStyles.textSmall}>{subtitle}</Text>
+        {subtitle ? <Text style={GlobalStyles.textSmall}>{subtitle}</Text> : null}
       </View>
 
       <TouchableOpacity style={GlobalStyles.headerIconBtn} onPress={onMenu}>

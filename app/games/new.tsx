@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { GameHeader } from "../../components/game_header";
 import { PlayerAutocomplete } from "../../components/player_autocomplete";
 import { GAMES } from "../../constants/games";
 import { Colors, GlobalStyles, Spacing } from "../../constants/theme";
@@ -143,17 +144,7 @@ export default function NewGameScreen() {
     <SafeAreaView style={GlobalStyles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[GlobalStyles.headerContainer, { paddingTop: Spacing.s }]}>
-        <TouchableOpacity 
-          onPress={router.back} 
-          style={GlobalStyles.headerIconBtn} 
-          activeOpacity={0.7}
-        >
-          <Text style={{ color: Colors.text, fontSize: 16, marginTop: -2 }}>◀</Text>
-        </TouchableOpacity>
-        <Text style={GlobalStyles.headerTitle}>New Game Setup</Text>
-        <View style={{ width: 36 }} /> 
-      </View>
+      <GameHeader title="New Game Setup" onBack={router.back} />
 
       <KeyboardAwareScrollView 
         style={{ flex: 1 }}
